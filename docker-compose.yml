@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: bdte-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bdte
+      POSTGRES_PASSWORD: bdte
+      POSTGRES_DB: bdte
+    ports:
+      - "5432:5432"
+    volumes:
+      - bdte_db_data:/var/lib/postgresql/data
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bdte-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - bdte_ollama_data:/root/.ollama
+    # GPU'nuz varsa aşağıdaki bloğu açın (docker-compose >= 1.28, NVIDIA Container Toolkit gerekir):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  backend:
+    build: ./backend
+    container_name: bdte-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://bdte:bdte@db:5432/bdte
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.1:8b
+      CORS_ORIGINS: '["http://localhost:5173"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - ollama
+    volumes:
+      - ./backend/app:/app/app  # geliştirmede hot-reload için
+
+  frontend:
+    build: ./frontend
+    container_name: bdte-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  bdte_db_data:
+  bdte_ollama_data:
