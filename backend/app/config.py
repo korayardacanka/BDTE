@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
 
     # Veritabanı (PostgreSQL + pgvector)
-    database_url: str = "postgresql+psycopg://bdte:bdte@localhost:5432/bdte"
+    database_url: str = "sqlite:///./bdte.db"
 
     # LLM (Ollama — self-hosted, açık kaynak)
     ollama_base_url: str = "http://localhost:11434"

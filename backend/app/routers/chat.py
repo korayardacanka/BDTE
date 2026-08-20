@@ -1,33 +1,34 @@
 """
 Diyalog endpoint'i.
 
-Artık Ollama'nın /api/chat endpoint'ini kullanıyor (mesaj geçmişi + system
-prompt destekli). Persona.py'deki davranışsal profil, her konuşmanın
-başında bir "system" mesajı olarak modele veriliyor — bu, "prompt
-engineering" ile davranışsal temellendirme (behavioral grounding) yaklaşımının
-temelini oluşturuyor.
+Ollama'nın /api/chat endpoint'ini kullanır (mesaj geçmişi + system prompt
+destekli). Persona.py'deki davranışsal profil, her konuşmanın başında bir
+"system" mesajı olarak modele veriliyor.
+
+Konuşma geçmişi artık SQLite'a (conversation_log tablosu) kalıcı olarak
+yazılıyor — backend yeniden başlasa bile geçmiş kaybolmuyor.
 
 TODO (ileride, veri/gerçek profil geldiğinde):
 - persona.py yerine veritabanından (behavioral_profile tablosu) okuma
 - pgvector ile geçmiş konuşmalardan ilgili anıları getirme (tam RAG)
 """
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.database import get_db
+from app.models import ConversationMessage
 from app.persona import EXAMPLE_PERSONA, build_system_prompt
 
 router = APIRouter()
 settings = get_settings()
 
-# Basit, bellek-içi (in-memory) konuşma geçmişi.
-# Not: Backend yeniden başladığında (--reload) veya birden fazla worker
-# process çalıştığında bu sıfırlanır/tutarsız olur. Kalıcı hale getirmek
-# (PostgreSQL'e yazmak) bir sonraki adım.
-_conversations: dict[str, list[dict]] = {}
-
 SYSTEM_PROMPT = build_system_prompt(EXAMPLE_PERSONA)
+
+MAX_HISTORY_MESSAGES = 20  # LLM'e gönderilecek son N mesajla sınırla
 
 
 class ChatRequest(BaseModel):
@@ -40,10 +41,31 @@ class ChatResponse(BaseModel):
     session_id: str | None = None
 
 
+def _load_history(db: Session, session_id: str) -> list[dict]:
+    """Veritabanından, bu session'a ait son mesajları okur."""
+    rows = (
+        db.execute(
+            select(ConversationMessage)
+            .where(ConversationMessage.session_id == session_id)
+            .order_by(ConversationMessage.id.desc())
+            .limit(MAX_HISTORY_MESSAGES)
+        )
+        .scalars()
+        .all()
+    )
+    rows = list(reversed(rows))
+    return [{"role": r.role, "content": r.content} for r in rows]
+
+
+def _save_message(db: Session, session_id: str, role: str, content: str) -> None:
+    db.add(ConversationMessage(session_id=session_id, role=role, content=content))
+    db.commit()
+
+
 @router.post("/", response_model=ChatResponse)
-async def send_message(req: ChatRequest):
+async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
     session_id = req.session_id or "default"
-    history = _conversations.setdefault(session_id, [])
+    history = _load_history(db, session_id)
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
         {"role": "user", "content": req.message}
@@ -58,21 +80,18 @@ async def send_message(req: ChatRequest):
                     "messages": messages,
                     "stream": False,
                     "options": {
-                        "temperature": 0.6,  # çok yüksek olursa dil karışması/tutarsızlık artar
+                        "temperature": 0.6,
                     },
                 },
             )
             r.raise_for_status()
             data = r.json()
             reply = data.get("message", {}).get("content", "").strip()
-    except Exception as exc:  # Ollama henüz kurulu/çalışır değilse
+    except Exception as exc:
         reply = f"[LLM henüz bağlı değil — stub yanıt] Mesajını aldım: '{req.message}' ({exc.__class__.__name__})"
         return ChatResponse(reply=reply, session_id=session_id)
 
-    # Geçmişe ekle (sadece user+assistant, system her seferinde ayrıca ekleniyor)
-    history.append({"role": "user", "content": req.message})
-    history.append({"role": "assistant", "content": reply})
-    # Geçmişi çok uzamasın diye son 20 mesajla sınırla (basit bir önlem)
-    _conversations[session_id] = history[-20:]
+    _save_message(db, session_id, "user", req.message)
+    _save_message(db, session_id, "assistant", reply)
 
     return ChatResponse(reply=reply, session_id=session_id)

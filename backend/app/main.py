@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.database import init_db
 from app.routers import health, profile, chat
 
 settings = get_settings()
@@ -15,6 +16,9 @@ app = FastAPI(
     description="Behavioral Digital Twin for Elderly — backend service",
     version="0.1.0",
 )
+
+# Uygulama ayağa kalkarken veritabanı tablolarını (henüz yoksa) oluştur.
+init_db()
 
 # Geliştirme aşamasında frontend'in (localhost:5173) API'ye erişebilmesi için CORS
 app.add_middleware(
