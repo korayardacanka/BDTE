@@ -10,5 +10,5 @@ sentence-transformers==3.1.1
 ahpy==2.0
 pymcdm==1.2.1
 pandas==2.2.3
-numpy==2.1.1
+numpy==1.26.4
 python-multipart==0.0.9
