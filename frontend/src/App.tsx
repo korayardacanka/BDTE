@@ -10,6 +10,7 @@ export default function App() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
 
   async function sendMessage() {
     if (!input.trim()) return;
@@ -28,10 +29,32 @@ export default function App() {
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "Backend'e ulaşılamadı. `docker compose up` çalıştığından emin ol." },
+        { role: "assistant", text: "Backend'e ulaşılamadı. Backend'in çalıştığından emin ol (uvicorn)." },
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function playAudio(text: string, index: number) {
+    setAudioLoadingIndex(index);
+    try {
+      const res = await fetch(`${API_BASE}/api/tts/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, language: "tr" }),
+      });
+      if (!res.ok) throw new Error("TTS isteği başarısız");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Ses üretilemedi:", e);
+      alert("Ses üretilemedi. Backend'de TTS modeli kurulu/yüklü mü kontrol et.");
+    } finally {
+      setAudioLoadingIndex(null);
     }
   }
 
@@ -39,19 +62,35 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4">
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-bold text-slate-800 mb-1">BDTE — Prototip Sohbet Arayüzü</h1>
-        <p className="text-sm text-slate-500 mb-6">Hafta 1 iskeleti: chat UI ↔ FastAPI ↔ (yakında) Ollama + RAG</p>
+        <p className="text-sm text-slate-500 mb-6">Chat UI ↔ FastAPI ↔ Ollama (persona) ↔ Coqui TTS</p>
 
         <div className="bg-white rounded-lg shadow p-4 h-96 overflow-y-auto flex flex-col gap-3 mb-4">
           {messages.map((m, i) => (
             <div
               key={i}
-              className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                m.role === "user"
-                  ? "self-end bg-blue-600 text-white"
-                  : "self-start bg-slate-100 text-slate-800"
+              className={`flex items-end gap-2 max-w-[85%] ${
+                m.role === "user" ? "self-end flex-row-reverse" : "self-start"
               }`}
             >
-              {m.text}
+              <div
+                className={`px-3 py-2 rounded-lg text-sm ${
+                  m.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-800"
+                }`}
+              >
+                {m.text}
+              </div>
+              {m.role === "assistant" && (
+                <button
+                  onClick={() => playAudio(m.text, i)}
+                  disabled={audioLoadingIndex === i}
+                  title="Sesli dinle"
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 disabled:opacity-50 text-sm"
+                >
+                  {audioLoadingIndex === i ? "…" : "🔊"}
+                </button>
+              )}
             </div>
           ))}
           {loading && <div className="self-start text-slate-400 text-sm">yazıyor…</div>}
