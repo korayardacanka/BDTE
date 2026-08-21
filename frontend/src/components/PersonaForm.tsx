@@ -50,6 +50,7 @@ interface PersonaFormProps {
 export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
   const [subjectName, setSubjectName] = useState("");
   const [relation, setRelation] = useState("");
+  const [gender, setGender] = useState<"kadın" | "erkek">("kadın");
   const [age, setAge] = useState("");
   const [dimensions, setDimensions] = useState<Record<string, string>>(
     Object.fromEntries(DIMENSION_KEYS.map((k) => [k, ""]))
@@ -91,6 +92,7 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
         body: JSON.stringify({
           subject_name: subjectName,
           relation,
+          gender,
           age_at_reference: age ? parseInt(age, 10) : null,
           dimensions,
           comparisons: COMPARISON_PAIRS.map(([a, b]) => ({
@@ -141,11 +143,29 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
             onChange={(e) => setAge(e.target.value)}
           />
           <input
-            className="col-span-3 border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="col-span-2 border border-slate-300 rounded-lg px-3 py-2 text-sm"
             placeholder="İlişki (ör. anneanne, dede, baba)"
             value={relation}
             onChange={(e) => setRelation(e.target.value)}
           />
+          <div className="flex items-center gap-3 text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                checked={gender === "kadın"}
+                onChange={() => setGender("kadın")}
+              />
+              Kadın
+            </label>
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                checked={gender === "erkek"}
+                onChange={() => setGender("erkek")}
+              />
+              Erkek
+            </label>
+          </div>
         </div>
 
         {/* 5 boyut */}

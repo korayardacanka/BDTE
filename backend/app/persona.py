@@ -140,6 +140,7 @@ def seed_default_persona(db) -> None:
 
     profile = BehavioralProfile(
         subject_name="Nezahat Yılmaz",
+        gender="kadın",
         relation="anneanne",
         age_at_reference=78,
         emotional_patterns=SEED_PERSONA_DIMENSIONS["emotional_patterns"],
@@ -164,6 +165,7 @@ def profile_row_to_dict(profile) -> dict:
     return {
         "subject_name": profile.subject_name,
         "relation": profile.relation,
+        "gender": profile.gender,
         "age_at_reference": profile.age_at_reference,
         "dimensions": {k: getattr(profile, k) for k in DIMENSION_KEYS},
         "mcdm_weights": {k: getattr(profile, f"weight_{k}") or 0 for k in DIMENSION_KEYS},

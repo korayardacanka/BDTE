@@ -7,6 +7,7 @@ type PersonaSummary = {
   id: number;
   subject_name: string;
   relation: string;
+  gender: "kadın" | "erkek" | null;
   age_at_reference: number | null;
   consistency_ratio: number | null;
 };
@@ -85,7 +86,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/tts/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, language: "tr" }),
+        body: JSON.stringify({ text, language: "tr", persona_id: selectedPersonaId }),
       });
       if (!res.ok) throw new Error("TTS isteği başarısız");
       const blob = await res.blob();
@@ -138,7 +139,11 @@ export default function App() {
 
         {/* Avatar */}
         <div className="flex justify-center mb-4">
-          <Avatar isSpeaking={isSpeaking} />
+          <Avatar
+            isSpeaking={isSpeaking}
+            gender={selectedPersona?.gender ?? "kadın"}
+            age={selectedPersona?.age_at_reference ?? null}
+          />
         </div>
 
         <div className="bg-white rounded-lg shadow p-4 h-96 overflow-y-auto flex flex-col gap-3 mb-4">

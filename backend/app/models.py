@@ -32,20 +32,27 @@ class BehavioralProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     subject_name = Column(String(128), nullable=False)
     relation = Column(String(64), nullable=True)
+    gender = Column(String(16), nullable=True)  # "kadın" veya "erkek" — TTS ses seçimi ve avatar için
     age_at_reference = Column(Integer, nullable=True)
 
+    # 5 boyut, her biri ayrı sütun (basitlik için — alternatif olarak
+    # JSON sütunu da kullanılabilirdi, ama SQLite'ta JSON sorgulamak
+    # daha zor olduğu için düz sütunlar tercih edildi).
     emotional_patterns = Column(Text, nullable=True)
     communication_style = Column(Text, nullable=True)
     life_preferences = Column(Text, nullable=True)
     decision_making_traits = Column(Text, nullable=True)
     relationship_dynamics = Column(Text, nullable=True)
 
+    # AHP'den (bu persona'nın KENDİ ikili karşılaştırmalarından) hesaplanan
+    # kişiye özel ağırlıklar.
     weight_emotional_patterns = Column(Float, nullable=True)
     weight_communication_style = Column(Float, nullable=True)
     weight_life_preferences = Column(Float, nullable=True)
     weight_decision_making_traits = Column(Float, nullable=True)
     weight_relationship_dynamics = Column(Float, nullable=True)
 
+    # AHP tutarlılık oranı (CR) — 0.10'un altında olması beklenir.
     consistency_ratio = Column(Float, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

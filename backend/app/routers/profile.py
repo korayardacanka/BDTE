@@ -38,6 +38,7 @@ def list_profiles(db: Session = Depends(get_db)):
             "subject_name": p.subject_name,
             "relation": p.relation,
             "age_at_reference": p.age_at_reference,
+            "gender": p.gender,
             "consistency_ratio": p.consistency_ratio,
         }
         for p in profiles
@@ -69,6 +70,7 @@ class ComparisonEntry(BaseModel):
 class CreateProfileRequest(BaseModel):
     subject_name: str
     relation: str
+    gender: str  # "kadın" veya "erkek"
     age_at_reference: int | None = None
     dimensions: dict[str, str]  # 5 boyut -> serbest metin
     comparisons: list[ComparisonEntry]  # tam olarak 10 karşılaştırma bekleniyor
@@ -77,6 +79,8 @@ class CreateProfileRequest(BaseModel):
 @router.post("/")
 def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
     # Girdi doğrulama
+    if req.gender not in ("kadın", "erkek"):
+        raise HTTPException(status_code=400, detail="gender 'kadın' veya 'erkek' olmalı")
     missing = [k for k in DIMENSION_KEYS if not req.dimensions.get(k, "").strip()]
     if missing:
         raise HTTPException(
@@ -111,6 +115,7 @@ def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
     profile = BehavioralProfile(
         subject_name=req.subject_name,
         relation=req.relation,
+        gender=req.gender,
         age_at_reference=req.age_at_reference,
         emotional_patterns=req.dimensions["emotional_patterns"],
         communication_style=req.dimensions["communication_style"],

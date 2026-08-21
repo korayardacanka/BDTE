@@ -20,12 +20,15 @@ import threading
 _tts_instance = None
 _lock = threading.Lock()
 
-# Modelin önceden tanımlı (built-in) konuşmacılarından biri — herhangi bir
-# ses örneği (speaker_wav) kaydetmeye gerek kalmadan kullanılabilir.
-# TODO (gelecek çalışma / gender-adaptive voice profile): persona'nın
-# yaşına/cinsiyetine uygun kısa bir referans ses klonlama (speaker_wav)
-# ile daha kişiselleştirilmiş bir ses üretilebilir.
-DEFAULT_SPEAKER = "Ana Florence"
+# Modelin önceden tanımlı (built-in) konuşmacılarından, cinsiyete göre biri
+# seçilir — herhangi bir ses örneği (speaker_wav) kaydetmeye gerek kalmadan.
+# TODO (gelecek çalışma): persona'nın yaşına/sesine daha da uygun bir
+# referans ses klonlama (speaker_wav) ile kişiselleştirme derinleştirilebilir.
+GENDER_SPEAKER_MAP = {
+    "kadın": "Ana Florence",
+    "erkek": "Craig Gutsy",
+}
+DEFAULT_SPEAKER = GENDER_SPEAKER_MAP["kadın"]
 
 
 def _get_tts():
@@ -48,14 +51,18 @@ def _get_tts():
     return _tts_instance
 
 
-def synthesize_speech(text: str, output_path: str, language: str = "tr") -> str:
+def synthesize_speech(
+    text: str, output_path: str, language: str = "tr", gender: str | None = None
+) -> str:
     """
     Metni sese çevirir, wav dosyasına yazar, dosya yolunu döner.
+    gender belirtilmişse ("kadın"/"erkek"), o cinsiyete uygun ses kullanılır.
     """
     tts = _get_tts()
+    speaker = GENDER_SPEAKER_MAP.get(gender, DEFAULT_SPEAKER)
     tts.tts_to_file(
         text=text,
-        speaker=DEFAULT_SPEAKER,
+        speaker=speaker,
         language=language,
         file_path=output_path,
     )
