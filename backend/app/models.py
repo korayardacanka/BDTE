@@ -22,9 +22,9 @@ class ConversationMessage(Base):
 
 class BehavioralProfile(Base):
     """
-    Davranışsal profil kaydı — şu an tek bir örnek (persona.py) kullanılıyor,
-    ama ileride birden fazla profil desteklenebilsin diye tablo olarak
-    tasarlandı (ör. birden fazla aile üyesi/kullanıcı senaryosu).
+    Davranışsal profil kaydı. Her persona, kendi ikili karşılaştırmalarından
+    (AHP) hesaplanmış KİŞİYE ÖZEL ağırlıklara sahiptir — sabit/genel
+    ağırlıklar kullanılmaz. Bu, projenin MCDM metodolojisinin temelidir.
     """
 
     __tablename__ = "behavioral_profile"
@@ -32,6 +32,7 @@ class BehavioralProfile(Base):
     id = Column(Integer, primary_key=True, index=True)
     subject_name = Column(String(128), nullable=False)
     relation = Column(String(64), nullable=True)
+    age_at_reference = Column(Integer, nullable=True)
 
     emotional_patterns = Column(Text, nullable=True)
     communication_style = Column(Text, nullable=True)
@@ -44,5 +45,7 @@ class BehavioralProfile(Base):
     weight_life_preferences = Column(Float, nullable=True)
     weight_decision_making_traits = Column(Float, nullable=True)
     weight_relationship_dynamics = Column(Float, nullable=True)
+
+    consistency_ratio = Column(Float, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

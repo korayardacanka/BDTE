@@ -6,7 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import init_db
+from app.database import init_db, SessionLocal
+from app.persona import seed_default_persona
 from app.routers import health, profile, chat, tts
 
 settings = get_settings()
@@ -19,6 +20,13 @@ app = FastAPI(
 
 # Uygulama ayağa kalkarken veritabanı tablolarını (henüz yoksa) oluştur.
 init_db()
+
+# Veritabanı boşsa örnek/sentetik bir persona ekle (ilk kurulum kolaylığı).
+_seed_db = SessionLocal()
+try:
+    seed_default_persona(_seed_db)
+finally:
+    _seed_db.close()
 
 # Geliştirme aşamasında frontend'in (localhost:5173) API'ye erişebilmesi için CORS
 app.add_middleware(
