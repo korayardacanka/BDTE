@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Avatar from "./components/Avatar";
 
 type Message = { role: "user" | "assistant"; text: string };
 
@@ -11,6 +12,7 @@ export default function App() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   async function sendMessage() {
     if (!input.trim()) return;
@@ -48,8 +50,15 @@ export default function App() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.play();
-      audio.onended = () => URL.revokeObjectURL(url);
+
+      audio.onplay = () => setIsSpeaking(true);
+      audio.onended = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.onpause = () => setIsSpeaking(false);
+
+      await audio.play();
     } catch (e) {
       console.error("Ses üretilemedi:", e);
       alert("Ses üretilemedi. Backend'de TTS modeli kurulu/yüklü mü kontrol et.");
@@ -62,7 +71,12 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4">
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-bold text-slate-800 mb-1">BDTE — Prototip Sohbet Arayüzü</h1>
-        <p className="text-sm text-slate-500 mb-6">Chat UI ↔ FastAPI ↔ Ollama (persona) ↔ Coqui TTS</p>
+        <p className="text-sm text-slate-500 mb-4">Chat UI ↔ FastAPI ↔ Ollama (persona) ↔ Coqui TTS</p>
+
+        {/* Avatar */}
+        <div className="flex justify-center mb-4">
+          <Avatar isSpeaking={isSpeaking} />
+        </div>
 
         <div className="bg-white rounded-lg shadow p-4 h-96 overflow-y-auto flex flex-col gap-3 mb-4">
           {messages.map((m, i) => (
