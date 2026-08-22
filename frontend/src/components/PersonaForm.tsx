@@ -109,6 +109,13 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
         setError(data.detail || "Persona oluşturulamadı.");
         return;
       }
+      if (!data.consistency_ok) {
+        alert(
+          `Dikkat: Girdiğin ikili karşılaştırmalar tutarsız çıktı (Tutarlılık Oranı: ${data.consistency_ratio.toFixed(
+            3
+          )}, hedef: <0.10). Persona yine de oluşturuldu, ama daha güvenilir bir sonuç için karşılaştırmaları gözden geçirip yeni bir persona olarak tekrar denemeni öneririm.`
+        );
+      }
       onCreated(data.id);
     } catch (e) {
       setError("Backend'e ulaşılamadı.");

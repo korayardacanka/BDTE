@@ -18,6 +18,7 @@ export default function App() {
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -28,13 +29,16 @@ export default function App() {
   async function loadPersonas(selectId?: number) {
     try {
       const res = await fetch(`${API_BASE}/api/profile/`);
+      if (!res.ok) throw new Error("Liste alınamadı");
       const data: PersonaSummary[] = await res.json();
       setPersonas(data);
+      setLoadError(null);
       if (data.length > 0) {
         setSelectedPersonaId(selectId ?? data[0].id);
       }
     } catch (e) {
       console.error("Personalar yüklenemedi:", e);
+      setLoadError("Backend'e ulaşılamadı. Backend'in (uvicorn) çalıştığından emin olup sayfayı yenile.");
     }
   }
 
@@ -57,7 +61,7 @@ export default function App() {
   }, [selectedPersonaId]);
 
   async function sendMessage() {
-    if (!input.trim() || selectedPersonaId === null) return;
+    if (!input.trim() || selectedPersonaId === null || loading) return;
     const userMsg: Message = { role: "user", text: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -69,6 +73,13 @@ export default function App() {
         body: JSON.stringify({ message: userMsg.text, persona_id: selectedPersonaId }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: `Hata: ${data.detail || "bilinmeyen bir sorun oluştu."}` },
+        ]);
+        return;
+      }
       setMessages((prev) => [...prev, { role: "assistant", text: data.reply }]);
     } catch (e) {
       setMessages((prev) => [
@@ -114,6 +125,12 @@ export default function App() {
       <div className="w-full max-w-xl">
         <h1 className="text-2xl font-bold text-slate-800 mb-1">BDTE — Prototip Sohbet Arayüzü</h1>
         <p className="text-sm text-slate-500 mb-4">Chat UI ↔ FastAPI ↔ Ollama (persona) ↔ Coqui TTS</p>
+
+        {loadError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 mb-4">
+            {loadError}
+          </div>
+        )}
 
         {/* Persona seçimi */}
         <div className="flex items-center gap-2 mb-4">
@@ -187,7 +204,7 @@ export default function App() {
           />
           <button
             onClick={sendMessage}
-            disabled={!selectedPersonaId}
+            disabled={!selectedPersonaId || loading}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
             Gönder

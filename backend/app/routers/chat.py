@@ -67,6 +67,11 @@ def _get_persona(db: Session, persona_id: int | None) -> BehavioralProfile:
 
 @router.post("/", response_model=ChatResponse)
 async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
+    if not req.message.strip():
+        raise HTTPException(status_code=400, detail="message boş olamaz")
+    if len(req.message) > 2000:
+        raise HTTPException(status_code=400, detail="message çok uzun (maks. 2000 karakter)")
+
     profile = _get_persona(db, req.persona_id)
     persona_dict = profile_row_to_dict(profile)
     system_prompt = build_system_prompt(persona_dict)
