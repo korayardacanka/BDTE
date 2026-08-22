@@ -55,4 +55,8 @@ class BehavioralProfile(Base):
     # AHP tutarlılık oranı (CR) — 0.10'un altında olması beklenir.
     consistency_ratio = Column(Float, nullable=True)
 
+    # Ham ikili karşılaştırmaların JSON hali — düzenleme sırasında
+    # kaydırıcıları kaldığı yerden göstermek için saklanır.
+    comparisons_json = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -1,18 +1,20 @@
 """
 Davranışsal profil (persona) endpoint'leri.
 
-Artık birden fazla persona desteklenir. Her yeni persona oluşturulurken,
+Birden fazla persona desteklenir. Her persona oluşturulurken/düzenlenirken,
 kullanıcı 5 boyut arasında 10 ikili karşılaştırma yapar (Saaty ölçeği,
 1/9 - 9 arası); backend bunlardan AHP ile o persona'ya ÖZEL ağırlıkları
 hesaplar (sabit/genel ağırlıklar kullanılmaz).
 """
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.mcdm import compute_ahp_weights
-from app.models import BehavioralProfile
+from app.models import BehavioralProfile, ConversationMessage
 from app.persona import COMPARISON_PAIRS, DIMENSION_KEYS, DIMENSION_LABELS, profile_row_to_dict
 
 router = APIRouter()
@@ -47,11 +49,13 @@ def list_profiles(db: Session = Depends(get_db)):
 
 @router.get("/{profile_id}")
 def get_profile(profile_id: int, db: Session = Depends(get_db)):
-    """Tek bir persona'nın tüm detaylarını (boyutlar + ağırlıklar) döndürür."""
+    """Tek bir persona'nın tüm detaylarını (boyutlar + ağırlıklar + ham karşılaştırmalar) döndürür."""
     profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Persona bulunamadı")
-    return profile_row_to_dict(profile) | {"id": profile.id}
+    result = profile_row_to_dict(profile) | {"id": profile.id}
+    result["comparisons"] = json.loads(profile.comparisons_json) if profile.comparisons_json else None
+    return result
 
 
 class ComparisonEntry(BaseModel):
@@ -59,7 +63,6 @@ class ComparisonEntry(BaseModel):
     Tek bir ikili karşılaştırma girdisi.
     value: Saaty ölçeğinde 1-9 arası bir sayı.
     more_important: "a" veya "b" — hangisinin daha önemli olduğu.
-    (a == b ise / value == 1 ise "eşit önemde" demektir.)
     """
     a: str
     b: str
@@ -67,7 +70,7 @@ class ComparisonEntry(BaseModel):
     more_important: str  # "a" veya "b"
 
 
-class CreateProfileRequest(BaseModel):
+class ProfileRequest(BaseModel):
     subject_name: str
     relation: str
     gender: str  # "kadın" veya "erkek"
@@ -76,24 +79,19 @@ class CreateProfileRequest(BaseModel):
     comparisons: list[ComparisonEntry]  # tam olarak 10 karşılaştırma bekleniyor
 
 
-@router.post("/")
-def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
-    # Girdi doğrulama
+def _validate_and_compute(req: ProfileRequest) -> tuple[dict, float]:
+    """Girdiyi doğrular, AHP ağırlıklarını hesaplar. Hata varsa HTTPException fırlatır."""
     if req.gender not in ("kadın", "erkek"):
         raise HTTPException(status_code=400, detail="gender 'kadın' veya 'erkek' olmalı")
     missing = [k for k in DIMENSION_KEYS if not req.dimensions.get(k, "").strip()]
     if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Eksik boyutlar: {', '.join(missing)}",
-        )
+        raise HTTPException(status_code=400, detail=f"Eksik boyutlar: {', '.join(missing)}")
     if len(req.comparisons) != len(COMPARISON_PAIRS):
         raise HTTPException(
             status_code=400,
             detail=f"{len(COMPARISON_PAIRS)} ikili karşılaştırma bekleniyor, {len(req.comparisons)} geldi.",
         )
 
-    # Karşılaştırmaları ahpy formatına çevir: (A, B): x  →  A, B'den x kat önemli.
     comparisons_dict: dict[tuple, float] = {}
     for c in req.comparisons:
         if c.more_important == "a":
@@ -103,7 +101,6 @@ def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
         else:
             raise HTTPException(status_code=400, detail="more_important 'a' veya 'b' olmalı")
 
-    # AHP ile bu persona'ya ÖZEL ağırlıkları hesapla.
     try:
         ahp_result = compute_ahp_weights(comparisons=comparisons_dict)
     except Exception as exc:
@@ -111,24 +108,34 @@ def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
 
     weights = {k: float(v) for k, v in ahp_result["weights"].items()}
     cr = float(ahp_result["consistency_ratio"])
+    return weights, cr
 
-    profile = BehavioralProfile(
-        subject_name=req.subject_name,
-        relation=req.relation,
-        gender=req.gender,
-        age_at_reference=req.age_at_reference,
-        emotional_patterns=req.dimensions["emotional_patterns"],
-        communication_style=req.dimensions["communication_style"],
-        life_preferences=req.dimensions["life_preferences"],
-        decision_making_traits=req.dimensions["decision_making_traits"],
-        relationship_dynamics=req.dimensions["relationship_dynamics"],
-        weight_emotional_patterns=weights.get("emotional_patterns", 0),
-        weight_communication_style=weights.get("communication_style", 0),
-        weight_life_preferences=weights.get("life_preferences", 0),
-        weight_decision_making_traits=weights.get("decision_making_traits", 0),
-        weight_relationship_dynamics=weights.get("relationship_dynamics", 0),
-        consistency_ratio=cr,
-    )
+
+def _apply_to_profile(profile: BehavioralProfile, req: ProfileRequest, weights: dict, cr: float) -> None:
+    profile.subject_name = req.subject_name
+    profile.relation = req.relation
+    profile.gender = req.gender
+    profile.age_at_reference = req.age_at_reference
+    profile.emotional_patterns = req.dimensions["emotional_patterns"]
+    profile.communication_style = req.dimensions["communication_style"]
+    profile.life_preferences = req.dimensions["life_preferences"]
+    profile.decision_making_traits = req.dimensions["decision_making_traits"]
+    profile.relationship_dynamics = req.dimensions["relationship_dynamics"]
+    profile.weight_emotional_patterns = weights.get("emotional_patterns", 0)
+    profile.weight_communication_style = weights.get("communication_style", 0)
+    profile.weight_life_preferences = weights.get("life_preferences", 0)
+    profile.weight_decision_making_traits = weights.get("decision_making_traits", 0)
+    profile.weight_relationship_dynamics = weights.get("relationship_dynamics", 0)
+    profile.consistency_ratio = cr
+    profile.comparisons_json = json.dumps([c.model_dump() for c in req.comparisons])
+
+
+@router.post("/")
+def create_profile(req: ProfileRequest, db: Session = Depends(get_db)):
+    weights, cr = _validate_and_compute(req)
+
+    profile = BehavioralProfile()
+    _apply_to_profile(profile, req, weights, cr)
     db.add(profile)
     db.commit()
     db.refresh(profile)
@@ -140,3 +147,48 @@ def create_profile(req: CreateProfileRequest, db: Session = Depends(get_db)):
         "consistency_ratio": cr,
         "consistency_ok": bool(cr < 0.10),
     }
+
+
+@router.put("/{profile_id}")
+def update_profile(profile_id: int, req: ProfileRequest, db: Session = Depends(get_db)):
+    """Var olan bir persona'yı düzenler; ağırlıklar yeni karşılaştırmalardan yeniden hesaplanır."""
+    profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Persona bulunamadı")
+
+    weights, cr = _validate_and_compute(req)
+    _apply_to_profile(profile, req, weights, cr)
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "id": profile.id,
+        "subject_name": profile.subject_name,
+        "weights": weights,
+        "consistency_ratio": cr,
+        "consistency_ok": bool(cr < 0.10),
+    }
+
+
+@router.delete("/{profile_id}")
+def delete_profile(profile_id: int, db: Session = Depends(get_db)):
+    """Bir persona'yı ve ona ait sohbet geçmişini siler."""
+    profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Persona bulunamadı")
+
+    remaining = db.query(BehavioralProfile).count()
+    if remaining <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail="En az bir persona kalmalı — son persona silinemez.",
+        )
+
+    # İlgili sohbet geçmişini de temizle (session_id "...::personaX" formatında).
+    db.query(ConversationMessage).filter(
+        ConversationMessage.session_id.like(f"%::persona{profile_id}")
+    ).delete(synchronize_session=False)
+
+    db.delete(profile)
+    db.commit()
+    return {"deleted": profile_id}

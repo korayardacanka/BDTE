@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -27,7 +27,6 @@ const COMPARISON_PAIRS: [string, string][] = [
   ["life_preferences", "decision_making_traits"],
 ];
 
-// Saaty ölçeği — 9 kademeli, simetrik (sol taraf A lehine, sağ taraf B lehine)
 const SCALE_STEPS = [
   { value: 9, more_important: "a" as const, label: "çok daha önemli" },
   { value: 7, more_important: "a" as const, label: "önemli ölçüde daha önemli" },
@@ -42,12 +41,20 @@ const SCALE_STEPS = [
 
 type ComparisonState = Record<string, { value: number; more_important: "a" | "b" }>;
 
+const defaultComparisons = (): ComparisonState =>
+  Object.fromEntries(
+    COMPARISON_PAIRS.map(([a, b]) => [`${a}|${b}`, { value: 1, more_important: "a" as const }])
+  );
+
 interface PersonaFormProps {
-  onCreated: (personaId: number) => void;
+  personaId?: number; // verilirse düzenleme modu
+  onSaved: (personaId: number) => void;
   onClose: () => void;
 }
 
-export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
+export default function PersonaForm({ personaId, onSaved, onClose }: PersonaFormProps) {
+  const isEditMode = personaId !== undefined;
+
   const [subjectName, setSubjectName] = useState("");
   const [relation, setRelation] = useState("");
   const [gender, setGender] = useState<"kadın" | "erkek">("kadın");
@@ -55,13 +62,38 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
   const [dimensions, setDimensions] = useState<Record<string, string>>(
     Object.fromEntries(DIMENSION_KEYS.map((k) => [k, ""]))
   );
-  const [comparisons, setComparisons] = useState<ComparisonState>(
-    Object.fromEntries(
-      COMPARISON_PAIRS.map(([a, b]) => [`${a}|${b}`, { value: 1, more_important: "a" as const }])
-    )
-  );
+  const [comparisons, setComparisons] = useState<ComparisonState>(defaultComparisons());
   const [submitting, setSubmitting] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(isEditMode);
   const [error, setError] = useState<string | null>(null);
+
+  // Düzenleme modundaysa, mevcut persona verisini çekip formu doldur.
+  useEffect(() => {
+    if (!isEditMode) return;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/profile/${personaId}`);
+        if (!res.ok) throw new Error("Persona yüklenemedi");
+        const data = await res.json();
+        setSubjectName(data.subject_name);
+        setRelation(data.relation ?? "");
+        setGender(data.gender ?? "kadın");
+        setAge(data.age_at_reference ? String(data.age_at_reference) : "");
+        setDimensions(data.dimensions ?? {});
+        if (data.comparisons) {
+          const restored: ComparisonState = {};
+          for (const c of data.comparisons) {
+            restored[`${c.a}|${c.b}`] = { value: c.value, more_important: c.more_important };
+          }
+          setComparisons(restored);
+        }
+      } catch (e) {
+        setError("Mevcut persona verisi yüklenemedi.");
+      } finally {
+        setLoadingExisting(false);
+      }
+    })();
+  }, [isEditMode, personaId]);
 
   function updateComparison(pairKey: string, stepIndex: number) {
     const step = SCALE_STEPS[stepIndex];
@@ -78,7 +110,7 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
       setError("İsim ve ilişki (ör. anneanne, dede) zorunlu.");
       return;
     }
-    const missingDim = DIMENSION_KEYS.find((k) => !dimensions[k].trim());
+    const missingDim = DIMENSION_KEYS.find((k) => !dimensions[k]?.trim());
     if (missingDim) {
       setError(`"${DIMENSION_LABELS[missingDim]}" boyutu boş bırakılamaz.`);
       return;
@@ -86,8 +118,10 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/profile/`, {
-        method: "POST",
+      const url = isEditMode ? `${API_BASE}/api/profile/${personaId}` : `${API_BASE}/api/profile/`;
+      const method = isEditMode ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subject_name: subjectName,
@@ -106,17 +140,17 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail || "Persona oluşturulamadı.");
+        setError(data.detail || "İşlem başarısız.");
         return;
       }
       if (!data.consistency_ok) {
         alert(
           `Dikkat: Girdiğin ikili karşılaştırmalar tutarsız çıktı (Tutarlılık Oranı: ${data.consistency_ratio.toFixed(
             3
-          )}, hedef: <0.10). Persona yine de oluşturuldu, ama daha güvenilir bir sonuç için karşılaştırmaları gözden geçirip yeni bir persona olarak tekrar denemeni öneririm.`
+          )}, hedef: <0.10). Persona yine de kaydedildi, ama daha güvenilir bir sonuç için karşılaştırmaları gözden geçirmeni öneririm.`
         );
       }
-      onCreated(data.id);
+      onSaved(data.id);
     } catch (e) {
       setError("Backend'e ulaşılamadı.");
     } finally {
@@ -124,17 +158,26 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
     }
   }
 
+  if (loadingExisting) {
+    return (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl p-6 text-sm text-slate-500">Yükleniyor...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold text-slate-800">Yeni Persona Oluştur</h2>
+          <h2 className="text-lg font-bold text-slate-800">
+            {isEditMode ? "Persona Düzenle" : "Yeni Persona Oluştur"}
+          </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">
             ×
           </button>
         </div>
 
-        {/* Temel bilgiler */}
         <div className="grid grid-cols-3 gap-3 mb-5">
           <input
             className="col-span-2 border border-slate-300 rounded-lg px-3 py-2 text-sm"
@@ -157,25 +200,16 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
           />
           <div className="flex items-center gap-3 text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
             <label className="flex items-center gap-1 cursor-pointer">
-              <input
-                type="radio"
-                checked={gender === "kadın"}
-                onChange={() => setGender("kadın")}
-              />
+              <input type="radio" checked={gender === "kadın"} onChange={() => setGender("kadın")} />
               Kadın
             </label>
             <label className="flex items-center gap-1 cursor-pointer">
-              <input
-                type="radio"
-                checked={gender === "erkek"}
-                onChange={() => setGender("erkek")}
-              />
+              <input type="radio" checked={gender === "erkek"} onChange={() => setGender("erkek")} />
               Erkek
             </label>
           </div>
         </div>
 
-        {/* 5 boyut */}
         <h3 className="text-sm font-semibold text-slate-700 mb-2">Davranışsal Boyutlar</h3>
         <div className="space-y-3 mb-6">
           {DIMENSION_KEYS.map((key) => (
@@ -184,7 +218,7 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
               <textarea
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
                 rows={2}
-                value={dimensions[key]}
+                value={dimensions[key] || ""}
                 onChange={(e) => setDimensions((prev) => ({ ...prev, [key]: e.target.value }))}
                 placeholder={`${DIMENSION_LABELS[key]} hakkında birkaç cümle yaz...`}
               />
@@ -192,13 +226,9 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
           ))}
         </div>
 
-        {/* AHP ikili karşılaştırmalar */}
-        <h3 className="text-sm font-semibold text-slate-700 mb-1">
-          İkili Karşılaştırmalar (AHP)
-        </h3>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">İkili Karşılaştırmalar (AHP)</h3>
         <p className="text-xs text-slate-500 mb-3">
-          Her satırda, bu kişiyi tanımlarken hangi boyutun diğerine göre daha belirleyici
-          olduğunu seç.
+          Her satırda, bu kişiyi tanımlarken hangi boyutun diğerine göre daha belirleyici olduğunu seç.
         </p>
         <div className="space-y-3 mb-6">
           {COMPARISON_PAIRS.map(([a, b]) => {
@@ -238,10 +268,7 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
         {error && <div className="text-red-600 text-sm mb-3">{error}</div>}
 
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100"
-          >
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100">
             Vazgeç
           </button>
           <button
@@ -249,7 +276,7 @@ export default function PersonaForm({ onCreated, onClose }: PersonaFormProps) {
             disabled={submitting}
             className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {submitting ? "Hesaplanıyor..." : "Persona Oluştur"}
+            {submitting ? "Hesaplanıyor..." : isEditMode ? "Kaydet" : "Persona Oluştur"}
           </button>
         </div>
       </div>

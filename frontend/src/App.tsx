@@ -18,6 +18,7 @@ export default function App() {
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [selectedPersonaId, setSelectedPersonaId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingPersonaId, setEditingPersonaId] = useState<number | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -118,6 +119,29 @@ export default function App() {
     }
   }
 
+  async function deletePersona(id: number) {
+    const persona = personas.find((p) => p.id === id);
+    if (!persona) return;
+    if (personas.length <= 1) {
+      alert("En az bir persona kalmalı — son personayı silemezsin.");
+      return;
+    }
+    if (!confirm(`"${persona.subject_name}" adlı persona kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/profile/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.detail || "Silinemedi.");
+        return;
+      }
+      loadPersonas();
+    } catch (e) {
+      alert("Backend'e ulaşılamadı.");
+    }
+  }
+
   const selectedPersona = personas.find((p) => p.id === selectedPersonaId);
 
   return (
@@ -146,6 +170,22 @@ export default function App() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => selectedPersonaId && setEditingPersonaId(selectedPersonaId)}
+            disabled={!selectedPersonaId}
+            title="Seçili personayı düzenle"
+            className="shrink-0 bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm hover:bg-slate-300 disabled:opacity-50"
+          >
+            ✏️
+          </button>
+          <button
+            onClick={() => selectedPersonaId && deletePersona(selectedPersonaId)}
+            disabled={!selectedPersonaId || personas.length <= 1}
+            title="Seçili personayı sil"
+            className="shrink-0 bg-red-100 text-red-700 px-3 py-2 rounded-lg text-sm hover:bg-red-200 disabled:opacity-50"
+          >
+            🗑️
+          </button>
           <button
             onClick={() => setShowForm(true)}
             className="shrink-0 bg-slate-800 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700"
@@ -215,8 +255,19 @@ export default function App() {
       {showForm && (
         <PersonaForm
           onClose={() => setShowForm(false)}
-          onCreated={(id) => {
+          onSaved={(id) => {
             setShowForm(false);
+            loadPersonas(id);
+          }}
+        />
+      )}
+
+      {editingPersonaId !== undefined && (
+        <PersonaForm
+          personaId={editingPersonaId}
+          onClose={() => setEditingPersonaId(undefined)}
+          onSaved={(id) => {
+            setEditingPersonaId(undefined);
             loadPersonas(id);
           }}
         />
