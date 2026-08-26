@@ -94,7 +94,11 @@ async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
                     "model": settings.ollama_model,
                     "messages": messages,
                     "stream": False,
-                    "options": {"temperature": 0.6},
+                    "options": {
+                        "temperature": 0.6,
+                        "repeat_penalty": 1.15,
+                        "num_ctx": 8192,
+                    },
                 },
             )
             r.raise_for_status()
