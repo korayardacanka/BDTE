@@ -7,7 +7,7 @@ type PersonaSummary = {
   id: number;
   subject_name: string;
   relation: string;
-  gender: "kadın" | "erkek" | null;
+  gender: "female" | "male" | null;
   age_at_reference: number | null;
   consistency_ratio: number | null;
 };
@@ -30,7 +30,7 @@ export default function App() {
   async function loadPersonas(selectId?: number) {
     try {
       const res = await fetch(`${API_BASE}/api/profile/`);
-      if (!res.ok) throw new Error("Liste alınamadı");
+      if (!res.ok) throw new Error("Failed to load list");
       const data: PersonaSummary[] = await res.json();
       setPersonas(data);
       setLoadError(null);
@@ -38,8 +38,8 @@ export default function App() {
         setSelectedPersonaId(selectId ?? data[0].id);
       }
     } catch (e) {
-      console.error("Personalar yüklenemedi:", e);
-      setLoadError("Backend'e ulaşılamadı. Backend'in (uvicorn) çalıştığından emin olup sayfayı yenile.");
+      console.error("Failed to load personas:", e);
+      setLoadError("Could not reach the backend. Make sure the backend (uvicorn) is running, then refresh the page.");
     }
   }
 
@@ -47,16 +47,14 @@ export default function App() {
     loadPersonas();
   }, []);
 
-  // Persona değiştiğinde sohbet ekranını sıfırla (backend'deki geçmiş
-  // persona bazında ayrı ayrı zaten korunuyor, bu sadece görsel sıfırlama).
+  // Reset the chat view when the persona changes (the backend already
+  // keeps history separately per persona — this is just a visual reset).
   useEffect(() => {
     const persona = personas.find((p) => p.id === selectedPersonaId);
     setMessages([
       {
         role: "assistant",
-        text: persona
-          ? `${persona.subject_name} ile sohbete başladın.`
-          : "Merhaba, ben BDTE prototipi.",
+        text: persona ? `You started a conversation with ${persona.subject_name}.` : "Hello, I'm the BDTE prototype.",
       },
     ]);
   }, [selectedPersonaId]);
@@ -77,7 +75,7 @@ export default function App() {
       if (!res.ok) {
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", text: `Hata: ${data.detail || "bilinmeyen bir sorun oluştu."}` },
+          { role: "assistant", text: `Error: ${data.detail || "an unknown problem occurred."}` },
         ]);
         return;
       }
@@ -85,7 +83,7 @@ export default function App() {
     } catch (e) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "Backend'e ulaşılamadı. Backend'in çalıştığından emin ol." },
+        { role: "assistant", text: "Could not reach the backend. Make sure it's running." },
       ]);
     } finally {
       setLoading(false);
@@ -98,9 +96,9 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/tts/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, language: "tr", persona_id: selectedPersonaId }),
+        body: JSON.stringify({ text, language: "en", persona_id: selectedPersonaId }),
       });
-      if (!res.ok) throw new Error("TTS isteği başarısız");
+      if (!res.ok) throw new Error("TTS request failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -112,8 +110,8 @@ export default function App() {
       audio.onpause = () => setIsSpeaking(false);
       await audio.play();
     } catch (e) {
-      console.error("Ses üretilemedi:", e);
-      alert("Ses üretilemedi. Backend'de TTS modeli kurulu/yüklü mü kontrol et.");
+      console.error("Could not generate audio:", e);
+      alert("Could not generate audio. Check whether the TTS model is loaded on the backend.");
     } finally {
       setAudioLoadingIndex(null);
     }
@@ -123,22 +121,22 @@ export default function App() {
     const persona = personas.find((p) => p.id === id);
     if (!persona) return;
     if (personas.length <= 1) {
-      alert("En az bir persona kalmalı — son personayı silemezsin.");
+      alert("At least one persona must remain — you can't delete the last one.");
       return;
     }
-    if (!confirm(`"${persona.subject_name}" adlı persona kalıcı olarak silinsin mi? Bu işlem geri alınamaz.`)) {
+    if (!confirm(`Permanently delete "${persona.subject_name}"? This cannot be undone.`)) {
       return;
     }
     try {
       const res = await fetch(`${API_BASE}/api/profile/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.detail || "Silinemedi.");
+        alert(data.detail || "Could not delete.");
         return;
       }
       loadPersonas();
     } catch (e) {
-      alert("Backend'e ulaşılamadı.");
+      alert("Could not reach the backend.");
     }
   }
 
@@ -147,7 +145,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center py-10 px-4">
       <div className="w-full max-w-xl">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">BDTE — Prototip Sohbet Arayüzü</h1>
+        <h1 className="text-2xl font-bold text-slate-800 mb-1">BDTE — Prototype Chat Interface</h1>
         <p className="text-sm text-slate-500 mb-4">Chat UI ↔ FastAPI ↔ Ollama (persona) ↔ Coqui TTS</p>
 
         {loadError && (
@@ -156,7 +154,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Persona seçimi */}
+        {/* Persona selector */}
         <div className="flex items-center gap-2 mb-4">
           <select
             className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
@@ -173,7 +171,7 @@ export default function App() {
           <button
             onClick={() => selectedPersonaId && setEditingPersonaId(selectedPersonaId)}
             disabled={!selectedPersonaId}
-            title="Seçili personayı düzenle"
+            title="Edit selected persona"
             className="shrink-0 bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm hover:bg-slate-300 disabled:opacity-50"
           >
             ✏️
@@ -181,7 +179,7 @@ export default function App() {
           <button
             onClick={() => selectedPersonaId && deletePersona(selectedPersonaId)}
             disabled={!selectedPersonaId || personas.length <= 1}
-            title="Seçili personayı sil"
+            title="Delete selected persona"
             className="shrink-0 bg-red-100 text-red-700 px-3 py-2 rounded-lg text-sm hover:bg-red-200 disabled:opacity-50"
           >
             🗑️
@@ -190,7 +188,7 @@ export default function App() {
             onClick={() => setShowForm(true)}
             className="shrink-0 bg-slate-800 text-white px-3 py-2 rounded-lg text-sm hover:bg-slate-700"
           >
-            + Yeni Persona
+            + New Persona
           </button>
         </div>
 
@@ -198,7 +196,7 @@ export default function App() {
         <div className="flex justify-center mb-4">
           <Avatar
             isSpeaking={isSpeaking}
-            gender={selectedPersona?.gender ?? "kadın"}
+            gender={selectedPersona?.gender ?? "female"}
             age={selectedPersona?.age_at_reference ?? null}
           />
         </div>
@@ -222,7 +220,7 @@ export default function App() {
                 <button
                   onClick={() => playAudio(m.text, i)}
                   disabled={audioLoadingIndex === i}
-                  title="Sesli dinle"
+                  title="Listen"
                   className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 disabled:opacity-50 text-sm"
                 >
                   {audioLoadingIndex === i ? "…" : "🔊"}
@@ -230,7 +228,7 @@ export default function App() {
               )}
             </div>
           ))}
-          {loading && <div className="self-start text-slate-400 text-sm">yazıyor…</div>}
+          {loading && <div className="self-start text-slate-400 text-sm">typing…</div>}
         </div>
 
         <div className="flex gap-2">
@@ -239,7 +237,7 @@ export default function App() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder={selectedPersona ? `${selectedPersona.subject_name}'ye bir mesaj yaz…` : "Bir mesaj yaz…"}
+            placeholder={selectedPersona ? `Write a message to ${selectedPersona.subject_name}…` : "Write a message…"}
             disabled={!selectedPersonaId}
           />
           <button
@@ -247,7 +245,7 @@ export default function App() {
             disabled={!selectedPersonaId || loading}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            Gönder
+            Send
           </button>
         </div>
       </div>

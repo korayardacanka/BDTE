@@ -1,32 +1,34 @@
 """
-BDTE — MCDM (Çok Kriterli Karar Verme) Modülü
-================================================
+BDTE — MCDM (Multi-Criteria Decision Making) Module
+=====================================================
 
-NOT: Bu dosya backend/app/mcdm.py — uygulamanın "tek gerçek kaynağı" (single
-source of truth). persona.py buradaki compute_ahp_weights() fonksiyonunu
-doğrudan import edip çalışma anında (runtime) ağırlık hesaplar; ağırlıklar
-elle iki yerde senkronize edilmez.
+NOTE: This file is backend/app/mcdm.py — the single source of truth for the
+app. persona.py imports compute_ahp_weights() directly and computes weights
+at runtime; weights are never manually synced in two places.
 
-ml-pipeline/mcdm.py, bu dosyayı import edip aynı raporu bağımsız bir script
-olarak da çalıştırabilmeniz için ince bir "runner" haline getirildi.
+ml-pipeline/mcdm.py is a thin runner that imports this file, so you can run
+the same report as a standalone script without starting the backend.
 
-Bu script iki aşamalı MCDM sürecini uygular:
+This script implements a two-stage MCDM process:
 
-1. AHP (Analytic Hierarchy Process) — 5 davranışsal boyutun (duygusal
-   örüntüler, iletişim tarzı, yaşam tercihleri, karar verme tarzı, ilişki
-   dinamikleri) birbirine göre önemini, paydaşın (aile üyesinin) ikili
-   karşılaştırmalarından hesaplar. Çıktı: her boyut için bir ağırlık
-   (0-1 arası, toplamı 1) + tutarlılık oranı (CR — 0.10'un altında olmalı,
-   yoksa karşılaştırmalar mantıksal olarak tutarsız demektir).
+1. AHP (Analytic Hierarchy Process) — computes the relative importance of
+   the 5 behavioral dimensions (emotional patterns, communication style,
+   life preferences, decision-making traits, relationship dynamics) from
+   a stakeholder's (family member's) pairwise comparisons. Output: a
+   weight for each dimension (0-1, summing to 1) + a consistency ratio
+   (CR — should be below 0.10, otherwise the comparisons are logically
+   inconsistent).
 
-2. TOPSIS — Birden fazla alternatif persona/konfigürasyon tanımlandığında
-   (örn. "daha resmi" vs "daha sıcak" vs "dengeli"), AHP ağırlıklarını
-   kullanarak bunları puanlar ve en iyisini seçer.
+2. TOPSIS — Given multiple candidate persona configurations (e.g. "more
+   formal" vs "warmer" vs "balanced"), scores and ranks them using the
+   AHP weights.
 
-NOT (rapor için önemli): Zaman kısıtı nedeniyle ikili karşılaştırma
-değerleri gerçek bir aile üyesinden toplanan anket verisi yerine,
-metodolojiyi doğrulamak amacıyla araştırmacı tarafından tanımlanmış
-örnek/sentetik değerlerdir (bkz. backend/app/persona.py — EXAMPLE_PERSONA).
+NOTE (important for the report): Due to time constraints, the pairwise
+comparison values used for the seed persona are example/synthetic values
+defined by the researcher to validate the methodology, not real survey
+data from a family member (see backend/app/persona.py — SEED persona).
+Every user-created persona, however, computes its weights from real
+pairwise comparisons entered through the UI.
 """
 
 import ahpy
@@ -35,18 +37,19 @@ from pymcdm.methods import TOPSIS
 
 
 # ---------------------------------------------------------------------------
-# 1. AHP — Davranışsal boyutların ağırlıklarını hesapla
+# 1. AHP — compute the weights of the behavioral dimensions
 # ---------------------------------------------------------------------------
 
-# İkili karşılaştırmalar: Saaty'nin 1-9 ölçeği kullanılır.
-#   1 = eşit önemde, 3 = biraz daha önemli, 5 = kesinlikle daha önemli,
-#   7 = çok güçlü derecede önemli, 9 = aşırı derecede önemli
-#   (2, 4, 6, 8 = ara değerler)
-# ('A', 'B'): x  →  A, B'den x kat daha önemlidir.
+# Pairwise comparisons use Saaty's 1-9 scale:
+#   1 = equally important, 3 = slightly more important, 5 = strongly more
+#   important, 7 = very strongly more important, 9 = extremely more
+#   important (2, 4, 6, 8 = intermediate values).
+# ('A', 'B'): x  →  A is x times more important than B.
 #
-# Örnek senaryo: Bir aile üyesi (torun), anneannesini en çok "duygusal
-# örüntüler" ve "iletişim tarzı" ile hatırladığını, "karar verme tarzı"nın
-# ise diyalog deneyiminde daha az belirleyici olduğunu belirtiyor.
+# Example scenario (default/seed comparisons): a family member recalls
+# their grandmother mostly through her "emotional patterns" and
+# "communication style", while "decision-making traits" felt less
+# defining in everyday conversation.
 BEHAVIORAL_COMPARISONS = {
     ("emotional_patterns", "communication_style"): 2,
     ("emotional_patterns", "relationship_dynamics"): 2,
@@ -63,36 +66,36 @@ BEHAVIORAL_COMPARISONS = {
 
 def compute_ahp_weights(comparisons: dict = BEHAVIORAL_COMPARISONS) -> dict:
     """
-    AHP ile ikili karşılaştırmalardan ağırlık vektörünü ve tutarlılık
-    oranını (CR) hesaplar.
+    Computes the weight vector and consistency ratio from pairwise
+    comparisons using AHP.
     """
     compare = ahpy.Compare(name="behavioral_dimensions", comparisons=comparisons)
-    weights = compare.target_weights  # {boyut: ağırlık} — toplamı 1.0
+    weights = compare.target_weights  # {dimension: weight} — sums to 1.0
     cr = compare.consistency_ratio
 
     return {"weights": weights, "consistency_ratio": cr}
 
 
 # ---------------------------------------------------------------------------
-# 2. TOPSIS — Alternatif persona konfigürasyonlarını AHP ağırlıklarıyla sırala
+# 2. TOPSIS — rank alternative persona configurations using AHP weights
 # ---------------------------------------------------------------------------
 
-# Her alternatif, 5 boyutta 1-10 arası bir "yoğunluk/belirginlik" puanına
-# sahip olsun (örn. o alternatifte "duygusal örüntüler" ne kadar baskın
-# işleniyor). Gerçek uygulamada bu puanlar da paydaş değerlendirmesinden
-# gelir; burada örnek/sentetik olarak tanımlanmıştır.
+# Each alternative has a 1-10 "prominence" score for each of the 5
+# dimensions (e.g., how strongly "emotional patterns" is expressed in that
+# alternative). In a real application these scores would also come from
+# stakeholder evaluation; here they are example/synthetic values.
 ALTERNATIVE_CONFIGS = {
-    "Sıcak ve Duygusal": {
+    "Warm and Emotional": {
         "emotional_patterns": 9, "communication_style": 8,
         "life_preferences": 6, "decision_making_traits": 4,
         "relationship_dynamics": 9,
     },
-    "Dengeli": {
+    "Balanced": {
         "emotional_patterns": 7, "communication_style": 7,
         "life_preferences": 7, "decision_making_traits": 6,
         "relationship_dynamics": 7,
     },
-    "Pratik ve Bilgilendirici": {
+    "Practical and Informative": {
         "emotional_patterns": 4, "communication_style": 6,
         "life_preferences": 8, "decision_making_traits": 9,
         "relationship_dynamics": 5,
@@ -110,9 +113,8 @@ def compute_topsis_ranking(
     weights: dict | None = None,
 ) -> list[tuple[str, float]]:
     """
-    AHP'den gelen ağırlıkları kullanarak alternatif persona
-    konfigürasyonlarını TOPSIS ile sıralar. Yüksek skor = ideal çözüme
-    daha yakın (daha iyi alternatif).
+    Ranks alternative persona configurations using TOPSIS, weighted by the
+    AHP output. Higher score = closer to the ideal solution (better).
     """
     if weights is None:
         weights = compute_ahp_weights()["weights"]
@@ -124,7 +126,7 @@ def compute_topsis_ranking(
     ], dtype=float)
 
     weight_vector = np.array([weights[dim] for dim in DIMENSION_ORDER])
-    # Tüm boyutlar "fayda" (profit) kriteri — yüksek puan her zaman daha iyi.
+    # All dimensions are "profit" criteria — higher is always better.
     criteria_types = np.array([1] * len(DIMENSION_ORDER))  # 1 = profit, -1 = cost
 
     topsis = TOPSIS()
@@ -135,26 +137,26 @@ def compute_topsis_ranking(
 
 
 # ---------------------------------------------------------------------------
-# Çalıştırılabilir demo
+# Runnable demo
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("1) AHP — Davranışsal Boyut Ağırlıkları")
+    print("1) AHP — Behavioral Dimension Weights")
     print("=" * 60)
     ahp_result = compute_ahp_weights()
     for dim, w in sorted(ahp_result["weights"].items(), key=lambda x: -x[1]):
         print(f"  {dim:28s} {w:.4f}")
     cr = ahp_result["consistency_ratio"]
-    status = "✅ TUTARLI" if cr < 0.10 else "⚠️  TUTARSIZ (CR >= 0.10, karşılaştırmaları gözden geçir)"
-    print(f"\n  Tutarlılık Oranı (CR): {cr:.4f}  →  {status}")
+    status = "OK — CONSISTENT" if cr < 0.10 else "WARNING — INCONSISTENT (CR >= 0.10, review comparisons)"
+    print(f"\n  Consistency Ratio (CR): {cr:.4f}  ->  {status}")
 
     print("\n" + "=" * 60)
-    print("2) TOPSIS — Alternatif Persona Konfigürasyonu Sıralaması")
+    print("2) TOPSIS — Alternative Persona Configuration Ranking")
     print("=" * 60)
     ranking = compute_topsis_ranking(weights=ahp_result["weights"])
     for i, (name, score) in enumerate(ranking, start=1):
-        print(f"  {i}. {name:28s} skor: {score:.4f}")
+        print(f"  {i}. {name:28s} score: {score:.4f}")
 
-    print(f"\n  → Seçilen konfigürasyon: '{ranking[0][0]}'")
-    print("    (persona.py'deki EXAMPLE_PERSONA bu ağırlıklarla hizalanmalı)")
+    print(f"\n  -> Selected configuration: '{ranking[0][0]}'")
+    print("    (persona.py's seed persona is aligned with these weights)")

@@ -1,41 +1,42 @@
 """
-TTS (Text-to-Speech) modülü — Coqui TTS (XTTS-v2) ile sesli yanıt üretimi.
+TTS (Text-to-Speech) module — uses Coqui TTS (XTTS-v2) for spoken replies.
 
-NOT: "coqui-tts" paketi kullanılıyor (idiap fork) — orijinal "TTS" paketi
-artık bakımsız (Coqui AI şirketi 2024'te kapandı, orijinal paket Python
-<3.11 ile sınırlı kaldı). Bu proje Python 3.11 kullandığı için ikisi de
-teknik olarak çalışabilir, ama güncel/bakımlı olan fork tercih edildi.
+NOTE: uses the "coqui-tts" package (idiap fork) — the original "TTS"
+package is no longer maintained (Coqui AI the company shut down in 2024,
+and the original package stayed limited to Python <3.11). This project
+uses Python 3.11, so either would technically work, but the maintained
+fork was chosen.
 
-XTTS-v2 modeli Coqui Public Model License (CPML) altındadır — akademik/
-ticari olmayan kullanım için uygundur (bkz. https://coqui.ai/cpml.txt).
-Bu, capstone projesi kapsamında (ticari olmayan) sorunsuz kullanılabilir,
-ama raporda lisans notunun belirtilmesi iyi olur.
+The XTTS-v2 model is released under the Coqui Public Model License (CPML)
+— suitable for academic/non-commercial use (see https://coqui.ai/cpml.txt).
+This is fine for a non-commercial capstone project, but the license note
+is worth mentioning in the report.
 
-Model ilk çağrıldığında Hugging Face'ten indirilir (~2GB) — bu işlem
-birkaç dakika sürebilir ve internet bağlantısı gerektirir. Sonraki
-çağrılar çok daha hızlıdır çünkü model bellekte/diskte kalır.
+The model is downloaded from Hugging Face on first call (~2GB) — this can
+take a few minutes and requires an internet connection. Subsequent calls
+are much faster since the model stays in memory/on disk.
 """
 import threading
 
 _tts_instance = None
 _lock = threading.Lock()
 
-# Modelin önceden tanımlı (built-in) konuşmacılarından, cinsiyete göre biri
-# seçilir — herhangi bir ses örneği (speaker_wav) kaydetmeye gerek kalmadan.
-# TODO (gelecek çalışma): persona'nın yaşına/sesine daha da uygun bir
-# referans ses klonlama (speaker_wav) ile kişiselleştirme derinleştirilebilir.
+# One of the model's built-in speakers is picked based on gender — no
+# reference audio (speaker_wav) needs to be recorded.
+# TODO (future work): a short reference-audio voice cloning (speaker_wav)
+# matched to the persona's age/voice could personalize this further.
 GENDER_SPEAKER_MAP = {
-    "kadın": "Ana Florence",
-    "erkek": "Craig Gutsy",
+    "female": "Ana Florence",
+    "male": "Craig Gutsy",
 }
-DEFAULT_SPEAKER = GENDER_SPEAKER_MAP["kadın"]
+DEFAULT_SPEAKER = GENDER_SPEAKER_MAP["female"]
 
 
 def _get_tts():
     """
-    TTS modelini yalnızca bir kez (ilk çağrıda) yükler ve bellekte tutar
-    (lazy singleton). Model yüklemesi ağır olduğu için her istekte yeniden
-    yüklenmesini istemiyoruz.
+    Loads the TTS model only once (on first call) and keeps it in memory
+    (lazy singleton). Model loading is heavy, so we don't want to reload
+    it on every request.
     """
     global _tts_instance
     if _tts_instance is None:
@@ -52,11 +53,11 @@ def _get_tts():
 
 
 def synthesize_speech(
-    text: str, output_path: str, language: str = "tr", gender: str | None = None
+    text: str, output_path: str, language: str = "en", gender: str | None = None
 ) -> str:
     """
-    Metni sese çevirir, wav dosyasına yazar, dosya yolunu döner.
-    gender belirtilmişse ("kadın"/"erkek"), o cinsiyete uygun ses kullanılır.
+    Converts text to speech, writes it to a wav file, returns the file path.
+    If gender is given ("female"/"male"), the matching voice is used.
     """
     tts = _get_tts()
     speaker = GENDER_SPEAKER_MAP.get(gender, DEFAULT_SPEAKER)

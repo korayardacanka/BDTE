@@ -1,6 +1,6 @@
 """
-TTS endpoint'i — metni sese çevirip ses dosyası (wav) olarak döner.
-persona_id verilirse, o persona'nın cinsiyetine uygun ses kullanılır.
+TTS endpoint — converts text to speech and returns an audio file (wav).
+If persona_id is given, the persona's gender determines the voice used.
 """
 import os
 import tempfile
@@ -19,14 +19,14 @@ router = APIRouter()
 
 class TTSRequest(BaseModel):
     text: str
-    language: str = "tr"
+    language: str = "en"
     persona_id: int | None = None
 
 
 @router.post("/")
 def text_to_speech(req: TTSRequest, db: Session = Depends(get_db)):
     if not req.text.strip():
-        raise HTTPException(status_code=400, detail="text boş olamaz")
+        raise HTTPException(status_code=400, detail="text must not be empty")
 
     gender = None
     if req.persona_id is not None:
@@ -38,6 +38,6 @@ def text_to_speech(req: TTSRequest, db: Session = Depends(get_db)):
     try:
         synthesize_speech(req.text, output_path=output_path, language=req.language, gender=gender)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"TTS hatası: {exc}")
+        raise HTTPException(status_code=500, detail=f"TTS error: {exc}")
 
     return FileResponse(output_path, media_type="audio/wav", filename="response.wav")

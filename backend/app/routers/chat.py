@@ -1,8 +1,9 @@
 """
-Diyalog endpoint'i.
+Chat endpoint.
 
-Artık persona_id parametresi ile hangi persona'nın kullanılacağı seçilir.
-Belirtilmezse, veritabanındaki ilk (varsayılan) persona kullanılır.
+Uses Ollama's /api/chat endpoint (supports message history + a system
+prompt). persona_id selects which persona is used; if omitted, the first
+persona in the database is used.
 """
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -61,24 +62,24 @@ def _get_persona(db: Session, persona_id: int | None) -> BehavioralProfile:
         else query.order_by(BehavioralProfile.id).first()
     )
     if not profile:
-        raise HTTPException(status_code=404, detail="Persona bulunamadı. Önce bir persona oluşturun.")
+        raise HTTPException(status_code=404, detail="Persona not found. Create one first.")
     return profile
 
 
 @router.post("/", response_model=ChatResponse)
 async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
     if not req.message.strip():
-        raise HTTPException(status_code=400, detail="message boş olamaz")
+        raise HTTPException(status_code=400, detail="message must not be empty")
     if len(req.message) > 2000:
-        raise HTTPException(status_code=400, detail="message çok uzun (maks. 2000 karakter)")
+        raise HTTPException(status_code=400, detail="message is too long (max. 2000 characters)")
 
     profile = _get_persona(db, req.persona_id)
     persona_dict = profile_row_to_dict(profile)
     system_prompt = build_system_prompt(persona_dict)
 
-    # persona bazında ayrı konuşma geçmişi tutmak için session_id'yi
-    # persona_id ile birleştiriyoruz (aynı kullanıcı farklı personalarla
-    # ayrı ayrı sohbet edebilsin).
+    # Combine session_id with persona_id so each persona keeps its own
+    # separate conversation history (a user can chat with different
+    # personas independently).
     session_id = f"{req.session_id or 'default'}::persona{profile.id}"
     history = _load_history(db, session_id)
 
@@ -96,8 +97,8 @@ async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
                     "stream": False,
                     "options": {
                         "temperature": 0.6,
-                        "repeat_penalty": 1.15,
-                        "num_ctx": 8192,
+                        "repeat_penalty": 1.15,  # reduces repetitive/robotic phrasing
+                        "num_ctx": 8192,  # default (2048) was too small, causing the model to "forget" context
                     },
                 },
             )
@@ -105,7 +106,7 @@ async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
             data = r.json()
             reply = data.get("message", {}).get("content", "").strip()
     except Exception as exc:
-        reply = f"[LLM henüz bağlı değil — stub yanıt] Mesajını aldım: '{req.message}' ({exc.__class__.__name__})"
+        reply = f"[LLM not connected yet — stub reply] Got your message: '{req.message}' ({exc.__class__.__name__})"
         return ChatResponse(reply=reply, session_id=req.session_id, persona_id=profile.id)
 
     _save_message(db, session_id, "user", req.message)

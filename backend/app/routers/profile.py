@@ -1,10 +1,10 @@
 """
-Davranışsal profil (persona) endpoint'leri.
+Behavioral profile (persona) endpoints.
 
-Birden fazla persona desteklenir. Her persona oluşturulurken/düzenlenirken,
-kullanıcı 5 boyut arasında 10 ikili karşılaştırma yapar (Saaty ölçeği,
-1/9 - 9 arası); backend bunlardan AHP ile o persona'ya ÖZEL ağırlıkları
-hesaplar (sabit/genel ağırlıklar kullanılmaz).
+Multiple personas are supported. When a persona is created or edited, the
+user makes 10 pairwise comparisons across the 5 dimensions (Saaty scale);
+the backend uses AHP to compute weights CUSTOM to that persona (no
+fixed/shared weights are used).
 """
 import json
 
@@ -22,7 +22,7 @@ router = APIRouter()
 
 @router.get("/dimensions")
 def get_dimensions():
-    """5 davranışsal boyutu ve etiketlerini döndürür (form oluşturmak için)."""
+    """Returns the 5 behavioral dimensions and their labels (for building the form)."""
     return {
         "dimensions": DIMENSION_KEYS,
         "labels": DIMENSION_LABELS,
@@ -32,7 +32,7 @@ def get_dimensions():
 
 @router.get("/")
 def list_profiles(db: Session = Depends(get_db)):
-    """Tüm kayıtlı persona'ları (özet halinde) listeler."""
+    """Lists all saved personas (summary view)."""
     profiles = db.query(BehavioralProfile).order_by(BehavioralProfile.id).all()
     return [
         {
@@ -49,10 +49,10 @@ def list_profiles(db: Session = Depends(get_db)):
 
 @router.get("/{profile_id}")
 def get_profile(profile_id: int, db: Session = Depends(get_db)):
-    """Tek bir persona'nın tüm detaylarını (boyutlar + ağırlıklar + ham karşılaştırmalar) döndürür."""
+    """Returns full details of a single persona (dimensions + weights + raw comparisons)."""
     profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
     if not profile:
-        raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        raise HTTPException(status_code=404, detail="Persona not found")
     result = profile_row_to_dict(profile) | {"id": profile.id}
     result["comparisons"] = json.loads(profile.comparisons_json) if profile.comparisons_json else None
     return result
@@ -60,36 +60,36 @@ def get_profile(profile_id: int, db: Session = Depends(get_db)):
 
 class ComparisonEntry(BaseModel):
     """
-    Tek bir ikili karşılaştırma girdisi.
-    value: Saaty ölçeğinde 1-9 arası bir sayı.
-    more_important: "a" veya "b" — hangisinin daha önemli olduğu.
+    A single pairwise comparison entry.
+    value: a number from 1-9 on the Saaty scale.
+    more_important: "a" or "b" — which one is more important.
     """
     a: str
     b: str
     value: float = Field(ge=1, le=9)
-    more_important: str  # "a" veya "b"
+    more_important: str  # "a" or "b"
 
 
 class ProfileRequest(BaseModel):
     subject_name: str
     relation: str
-    gender: str  # "kadın" veya "erkek"
+    gender: str  # "female" or "male"
     age_at_reference: int | None = None
-    dimensions: dict[str, str]  # 5 boyut -> serbest metin
-    comparisons: list[ComparisonEntry]  # tam olarak 10 karşılaştırma bekleniyor
+    dimensions: dict[str, str]  # 5 dimensions -> free text
+    comparisons: list[ComparisonEntry]  # exactly 10 comparisons expected
 
 
 def _validate_and_compute(req: ProfileRequest) -> tuple[dict, float]:
-    """Girdiyi doğrular, AHP ağırlıklarını hesaplar. Hata varsa HTTPException fırlatır."""
-    if req.gender not in ("kadın", "erkek"):
-        raise HTTPException(status_code=400, detail="gender 'kadın' veya 'erkek' olmalı")
+    """Validates the input and computes AHP weights. Raises HTTPException on error."""
+    if req.gender not in ("female", "male"):
+        raise HTTPException(status_code=400, detail="gender must be 'female' or 'male'")
     missing = [k for k in DIMENSION_KEYS if not req.dimensions.get(k, "").strip()]
     if missing:
-        raise HTTPException(status_code=400, detail=f"Eksik boyutlar: {', '.join(missing)}")
+        raise HTTPException(status_code=400, detail=f"Missing dimensions: {', '.join(missing)}")
     if len(req.comparisons) != len(COMPARISON_PAIRS):
         raise HTTPException(
             status_code=400,
-            detail=f"{len(COMPARISON_PAIRS)} ikili karşılaştırma bekleniyor, {len(req.comparisons)} geldi.",
+            detail=f"Expected {len(COMPARISON_PAIRS)} pairwise comparisons, got {len(req.comparisons)}.",
         )
 
     comparisons_dict: dict[tuple, float] = {}
@@ -99,12 +99,12 @@ def _validate_and_compute(req: ProfileRequest) -> tuple[dict, float]:
         elif c.more_important == "b":
             comparisons_dict[(c.a, c.b)] = 1 / c.value
         else:
-            raise HTTPException(status_code=400, detail="more_important 'a' veya 'b' olmalı")
+            raise HTTPException(status_code=400, detail="more_important must be 'a' or 'b'")
 
     try:
         ahp_result = compute_ahp_weights(comparisons=comparisons_dict)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"AHP hesaplama hatası: {exc}")
+        raise HTTPException(status_code=400, detail=f"AHP computation error: {exc}")
 
     weights = {k: float(v) for k, v in ahp_result["weights"].items()}
     cr = float(ahp_result["consistency_ratio"])
@@ -151,10 +151,10 @@ def create_profile(req: ProfileRequest, db: Session = Depends(get_db)):
 
 @router.put("/{profile_id}")
 def update_profile(profile_id: int, req: ProfileRequest, db: Session = Depends(get_db)):
-    """Var olan bir persona'yı düzenler; ağırlıklar yeni karşılaştırmalardan yeniden hesaplanır."""
+    """Edits an existing persona; weights are recomputed from the new comparisons."""
     profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
     if not profile:
-        raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        raise HTTPException(status_code=404, detail="Persona not found")
 
     weights, cr = _validate_and_compute(req)
     _apply_to_profile(profile, req, weights, cr)
@@ -172,19 +172,19 @@ def update_profile(profile_id: int, req: ProfileRequest, db: Session = Depends(g
 
 @router.delete("/{profile_id}")
 def delete_profile(profile_id: int, db: Session = Depends(get_db)):
-    """Bir persona'yı ve ona ait sohbet geçmişini siler."""
+    """Deletes a persona and its associated conversation history."""
     profile = db.query(BehavioralProfile).filter(BehavioralProfile.id == profile_id).first()
     if not profile:
-        raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        raise HTTPException(status_code=404, detail="Persona not found")
 
     remaining = db.query(BehavioralProfile).count()
     if remaining <= 1:
         raise HTTPException(
             status_code=400,
-            detail="En az bir persona kalmalı — son persona silinemez.",
+            detail="At least one persona must remain — the last persona cannot be deleted.",
         )
 
-    # İlgili sohbet geçmişini de temizle (session_id "...::personaX" formatında).
+    # Clean up the associated conversation history too (session_id format "...::personaX").
     db.query(ConversationMessage).filter(
         ConversationMessage.session_id.like(f"%::persona{profile_id}")
     ).delete(synchronize_session=False)

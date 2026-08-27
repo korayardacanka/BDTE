@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-// NOT: Bu etiketler ve sıralama backend/app/persona.py'deki
-// DIMENSION_LABELS / COMPARISON_PAIRS ile birebir eşleşmeli.
+// NOTE: these labels and ordering must match backend/app/persona.py's
+// DIMENSION_LABELS / COMPARISON_PAIRS exactly.
 const DIMENSION_LABELS: Record<string, string> = {
-  emotional_patterns: "Duygusal örüntüler",
-  communication_style: "İletişim tarzı",
-  life_preferences: "Yaşam tercihleri",
-  decision_making_traits: "Karar verme tarzı",
-  relationship_dynamics: "İlişki dinamikleri",
+  emotional_patterns: "Emotional patterns",
+  communication_style: "Communication style",
+  life_preferences: "Life preferences",
+  decision_making_traits: "Decision-making traits",
+  relationship_dynamics: "Relationship dynamics",
 };
 
 const DIMENSION_KEYS = Object.keys(DIMENSION_LABELS);
@@ -27,16 +27,17 @@ const COMPARISON_PAIRS: [string, string][] = [
   ["life_preferences", "decision_making_traits"],
 ];
 
+// Saaty scale — 9 steps, symmetric (left side favors A, right side favors B).
 const SCALE_STEPS = [
-  { value: 9, more_important: "a" as const, label: "çok daha önemli" },
-  { value: 7, more_important: "a" as const, label: "önemli ölçüde daha önemli" },
-  { value: 5, more_important: "a" as const, label: "biraz daha önemli" },
-  { value: 3, more_important: "a" as const, label: "hafifçe daha önemli" },
-  { value: 1, more_important: "a" as const, label: "eşit önemde" },
-  { value: 3, more_important: "b" as const, label: "hafifçe daha önemli" },
-  { value: 5, more_important: "b" as const, label: "biraz daha önemli" },
-  { value: 7, more_important: "b" as const, label: "önemli ölçüde daha önemli" },
-  { value: 9, more_important: "b" as const, label: "çok daha önemli" },
+  { value: 9, more_important: "a" as const, label: "much more important" },
+  { value: 7, more_important: "a" as const, label: "strongly more important" },
+  { value: 5, more_important: "a" as const, label: "moderately more important" },
+  { value: 3, more_important: "a" as const, label: "slightly more important" },
+  { value: 1, more_important: "a" as const, label: "equally important" },
+  { value: 3, more_important: "b" as const, label: "slightly more important" },
+  { value: 5, more_important: "b" as const, label: "moderately more important" },
+  { value: 7, more_important: "b" as const, label: "strongly more important" },
+  { value: 9, more_important: "b" as const, label: "much more important" },
 ];
 
 type ComparisonState = Record<string, { value: number; more_important: "a" | "b" }>;
@@ -47,7 +48,7 @@ const defaultComparisons = (): ComparisonState =>
   );
 
 interface PersonaFormProps {
-  personaId?: number; // verilirse düzenleme modu
+  personaId?: number; // if given, edit mode
   onSaved: (personaId: number) => void;
   onClose: () => void;
 }
@@ -57,7 +58,7 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
 
   const [subjectName, setSubjectName] = useState("");
   const [relation, setRelation] = useState("");
-  const [gender, setGender] = useState<"kadın" | "erkek">("kadın");
+  const [gender, setGender] = useState<"female" | "male">("female");
   const [age, setAge] = useState("");
   const [dimensions, setDimensions] = useState<Record<string, string>>(
     Object.fromEntries(DIMENSION_KEYS.map((k) => [k, ""]))
@@ -67,17 +68,17 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
   const [loadingExisting, setLoadingExisting] = useState(isEditMode);
   const [error, setError] = useState<string | null>(null);
 
-  // Düzenleme modundaysa, mevcut persona verisini çekip formu doldur.
+  // In edit mode, fetch the existing persona and pre-fill the form.
   useEffect(() => {
     if (!isEditMode) return;
     (async () => {
       try {
         const res = await fetch(`${API_BASE}/api/profile/${personaId}`);
-        if (!res.ok) throw new Error("Persona yüklenemedi");
+        if (!res.ok) throw new Error("Failed to load persona");
         const data = await res.json();
         setSubjectName(data.subject_name);
         setRelation(data.relation ?? "");
-        setGender(data.gender ?? "kadın");
+        setGender(data.gender ?? "female");
         setAge(data.age_at_reference ? String(data.age_at_reference) : "");
         setDimensions(data.dimensions ?? {});
         if (data.comparisons) {
@@ -88,7 +89,7 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
           setComparisons(restored);
         }
       } catch (e) {
-        setError("Mevcut persona verisi yüklenemedi.");
+        setError("Could not load the existing persona data.");
       } finally {
         setLoadingExisting(false);
       }
@@ -107,12 +108,12 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
     setError(null);
 
     if (!subjectName.trim() || !relation.trim()) {
-      setError("İsim ve ilişki (ör. anneanne, dede) zorunlu.");
+      setError("Name and relation (e.g. grandmother, grandfather) are required.");
       return;
     }
     const missingDim = DIMENSION_KEYS.find((k) => !dimensions[k]?.trim());
     if (missingDim) {
-      setError(`"${DIMENSION_LABELS[missingDim]}" boyutu boş bırakılamaz.`);
+      setError(`"${DIMENSION_LABELS[missingDim]}" cannot be left empty.`);
       return;
     }
 
@@ -140,19 +141,19 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.detail || "İşlem başarısız.");
+        setError(data.detail || "Operation failed.");
         return;
       }
       if (!data.consistency_ok) {
         alert(
-          `Dikkat: Girdiğin ikili karşılaştırmalar tutarsız çıktı (Tutarlılık Oranı: ${data.consistency_ratio.toFixed(
+          `Note: the pairwise comparisons you entered came out inconsistent (Consistency Ratio: ${data.consistency_ratio.toFixed(
             3
-          )}, hedef: <0.10). Persona yine de kaydedildi, ama daha güvenilir bir sonuç için karşılaştırmaları gözden geçirmeni öneririm.`
+          )}, target: <0.10). The persona was saved anyway, but for a more reliable result you may want to review the comparisons.`
         );
       }
       onSaved(data.id);
     } catch (e) {
-      setError("Backend'e ulaşılamadı.");
+      setError("Could not reach the backend.");
     } finally {
       setSubmitting(false);
     }
@@ -161,7 +162,7 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
   if (loadingExisting) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-xl p-6 text-sm text-slate-500">Yükleniyor...</div>
+        <div className="bg-white rounded-xl shadow-xl p-6 text-sm text-slate-500">Loading...</div>
       </div>
     );
   }
@@ -171,7 +172,7 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold text-slate-800">
-            {isEditMode ? "Persona Düzenle" : "Yeni Persona Oluştur"}
+            {isEditMode ? "Edit Persona" : "Create New Persona"}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">
             ×
@@ -181,36 +182,36 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
         <div className="grid grid-cols-3 gap-3 mb-5">
           <input
             className="col-span-2 border border-slate-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="İsim (ör. Nezahat Yılmaz)"
+            placeholder="Name (e.g. Margaret Whitfield)"
             value={subjectName}
             onChange={(e) => setSubjectName(e.target.value)}
           />
           <input
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="Yaş"
+            placeholder="Age"
             type="number"
             value={age}
             onChange={(e) => setAge(e.target.value)}
           />
           <input
             className="col-span-2 border border-slate-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="İlişki (ör. anneanne, dede, baba)"
+            placeholder="Relation (e.g. grandmother, grandfather, father)"
             value={relation}
             onChange={(e) => setRelation(e.target.value)}
           />
           <div className="flex items-center gap-3 text-sm text-slate-600 border border-slate-300 rounded-lg px-3 py-2">
             <label className="flex items-center gap-1 cursor-pointer">
-              <input type="radio" checked={gender === "kadın"} onChange={() => setGender("kadın")} />
-              Kadın
+              <input type="radio" checked={gender === "female"} onChange={() => setGender("female")} />
+              Female
             </label>
             <label className="flex items-center gap-1 cursor-pointer">
-              <input type="radio" checked={gender === "erkek"} onChange={() => setGender("erkek")} />
-              Erkek
+              <input type="radio" checked={gender === "male"} onChange={() => setGender("male")} />
+              Male
             </label>
           </div>
         </div>
 
-        <h3 className="text-sm font-semibold text-slate-700 mb-2">Davranışsal Boyutlar</h3>
+        <h3 className="text-sm font-semibold text-slate-700 mb-2">Behavioral Dimensions</h3>
         <div className="space-y-3 mb-6">
           {DIMENSION_KEYS.map((key) => (
             <div key={key}>
@@ -220,15 +221,15 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
                 rows={2}
                 value={dimensions[key] || ""}
                 onChange={(e) => setDimensions((prev) => ({ ...prev, [key]: e.target.value }))}
-                placeholder={`${DIMENSION_LABELS[key]} hakkında birkaç cümle yaz...`}
+                placeholder={`Write a few sentences about ${DIMENSION_LABELS[key].toLowerCase()}...`}
               />
             </div>
           ))}
         </div>
 
-        <h3 className="text-sm font-semibold text-slate-700 mb-1">İkili Karşılaştırmalar (AHP)</h3>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">Pairwise Comparisons (AHP)</h3>
         <p className="text-xs text-slate-500 mb-3">
-          Her satırda, bu kişiyi tanımlarken hangi boyutun diğerine göre daha belirleyici olduğunu seç.
+          For each row, choose which dimension is more defining of this person compared to the other.
         </p>
         <div className="space-y-3 mb-6">
           {COMPARISON_PAIRS.map(([a, b]) => {
@@ -258,7 +259,7 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
                 />
                 <div className="text-center text-xs text-slate-400">
                   {current.more_important === "a" ? DIMENSION_LABELS[a] : DIMENSION_LABELS[b]}{" "}
-                  {SCALE_STEPS[currentIndex].label}
+                  is {SCALE_STEPS[currentIndex].label}
                 </div>
               </div>
             );
@@ -269,14 +270,14 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-slate-600 hover:bg-slate-100">
-            Vazgeç
+            Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
             className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {submitting ? "Hesaplanıyor..." : isEditMode ? "Kaydet" : "Persona Oluştur"}
+            {submitting ? "Computing..." : isEditMode ? "Save" : "Create Persona"}
           </button>
         </div>
       </div>

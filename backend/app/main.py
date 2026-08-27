@@ -1,6 +1,6 @@
 """
 BDTE (Behavioral Digital Twin for Elderly) — Backend API
-FastAPI ana uygulama giriş noktası.
+FastAPI application entry point.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,17 +18,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Uygulama ayağa kalkarken veritabanı tablolarını (henüz yoksa) oluştur.
+# Create database tables (if they don't exist yet) on startup.
 init_db()
 
-# Veritabanı boşsa örnek/sentetik bir persona ekle (ilk kurulum kolaylığı).
+# Insert an example/synthetic persona if the database is empty (first-run convenience).
 _seed_db = SessionLocal()
 try:
     seed_default_persona(_seed_db)
 finally:
     _seed_db.close()
 
-# Geliştirme aşamasında frontend'in (localhost:5173) API'ye erişebilmesi için CORS
+# Allow the frontend (localhost:5173) to reach the API during development.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,

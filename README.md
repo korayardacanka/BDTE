@@ -1,75 +1,77 @@
 # BDTE — Behavioral Digital Twin for Elderly
 
-Yaşlı bireylerin (veya kaybedilmiş/uzaktaki sevdiklerin) davranışsal profilini, **AHP
-(Analytic Hierarchy Process)** ile kişiye özel ağırlıklandırarak bir sohbet karakterine
-(persona) dönüştüren, sesli ve avatarlı bir diyalog sistemi.
+A voice-and-avatar dialogue system that turns the behavioral profile of an
+elderly person (or a distant/lost loved one) into a chat character
+(persona), weighted per-person using **AHP (Analytic Hierarchy Process)**.
 
-> **Not:** Zaman kısıtı nedeniyle proje, gerçek katılımcı verisi yerine kullanıcı
-> tarafından tanımlanan sentetik/örnek personalarla çalışır. Metodoloji (AHP+TOPSIS,
-> prompt engineering ile davranışsal temellendirme) gerçek veriyle aynı şekilde işler —
-> bkz. [Sınırlamalar](#bilinen-sınırlamalar--gelecek-çalışma).
+> **Note:** Due to time constraints, the project uses user-defined synthetic/
+> example personas instead of real participant data. The methodology (AHP+TOPSIS,
+> prompt engineering for behavioral grounding) works exactly the same way with
+> real data — see [Known Limitations](#known-limitations--future-work).
 
-## Mimari
+## Architecture
 
 ```
-Tarayıcı (React, :5173)
+Browser (React, :5173)
       │  fetch (JSON)
       ▼
 Backend — FastAPI (:8000)
       │
-      ├─ SQLite (bdte.db) ─── persona'lar + konuşma geçmişi
-      ├─ Ollama (:11434) ──── LLM (Llama 3.1 8B) — persona bazlı diyalog
-      └─ Coqui TTS (XTTS-v2) ─ cinsiyete uyarlanmış sesli yanıt
+      ├─ SQLite (bdte.db) ─── personas + conversation history
+      ├─ Ollama (:11434) ──── LLM (Llama 3.1 8B) — persona-grounded dialogue
+      └─ Coqui TTS (XTTS-v2) ─ gender-adapted spoken replies
 ```
 
-Her persona'nın 5 davranışsal boyutu (duygusal örüntüler, iletişim tarzı, yaşam
-tercihleri, karar verme tarzı, ilişki dinamikleri) vardır. Kullanıcı bu 5 boyut
-arasında 10 ikili karşılaştırma yapar (Saaty ölçeği); backend bunlardan **AHP ile o
-persona'ya özel ağırlıkları** hesaplar. Bu ağırlıklar, LLM'e verilen system prompt'ta
-boyutların önem sırasını belirler.
+Each persona has 5 behavioral dimensions (emotional patterns, communication
+style, life preferences, decision-making traits, relationship dynamics).
+The user makes 10 pairwise comparisons across these 5 dimensions (Saaty
+scale); the backend uses **AHP to compute weights custom to that persona**.
+These weights determine the order of importance of the dimensions in the
+system prompt given to the LLM.
 
-## Klasör yapısı
+## Folder structure
 
 ```
 bdte/
 ├── backend/
 │   └── app/
-│       ├── main.py          # FastAPI giriş noktası, seed persona
-│       ├── config.py        # ortam değişkenleri
-│       ├── database.py      # SQLAlchemy (SQLite) bağlantısı
-│       ├── models.py        # BehavioralProfile, ConversationMessage tabloları
-│       ├── mcdm.py          # AHP (ağırlık hesabı) + TOPSIS
-│       ├── persona.py       # system prompt üretimi, seed persona verisi
-│       ├── tts.py           # Coqui TTS (XTTS-v2) entegrasyonu
+│       ├── main.py          # FastAPI entry point, persona seeding
+│       ├── config.py        # environment variables
+│       ├── database.py      # SQLAlchemy (SQLite) connection
+│       ├── models.py        # BehavioralProfile, ConversationMessage tables
+│       ├── mcdm.py          # AHP (weight computation) + TOPSIS
+│       ├── persona.py       # system prompt generation, seed persona data
+│       ├── tts.py           # Coqui TTS (XTTS-v2) integration
 │       └── routers/
 │           ├── health.py
-│           ├── profile.py   # persona CRUD (liste/detay/oluştur/düzenle/sil)
-│           ├── chat.py      # diyalog endpoint'i
-│           └── tts.py       # metin→ses endpoint'i
+│           ├── profile.py   # persona CRUD (list/detail/create/edit/delete)
+│           ├── chat.py      # dialogue endpoint
+│           └── tts.py       # text-to-speech endpoint
 ├── frontend/
 │   └── src/
-│       ├── App.tsx                    # ana sohbet arayüzü
+│       ├── App.tsx                    # main chat interface
 │       └── components/
-│           ├── Avatar.tsx             # cinsiyet/yaşa uyarlanmış SVG avatar
-│           └── PersonaForm.tsx        # persona oluşturma/düzenleme formu (AHP kaydırıcıları)
+│           ├── Avatar.tsx             # gender/age-adapted SVG avatar
+│           └── PersonaForm.tsx        # persona creation/edit form (AHP sliders)
 └── ml-pipeline/
-    └── mcdm.py               # backend/app/mcdm.py'yi kullanan bağımsız rapor scripti
+    └── mcdm.py               # standalone report script using backend/app/mcdm.py
 ```
 
-## Gereksinimler
+## Requirements
 
-- Python 3.11+ ([uv](https://docs.astral.sh/uv/) ile kurulum önerilir)
+- Python 3.11+ (installing with [uv](https://docs.astral.sh/uv/) is recommended)
 - Node.js 20+
-- [Ollama](https://ollama.com) (yerel LLM çalıştırmak için)
-- (Önerilir) NVIDIA GPU — TTS ve LLM gecikmesini ciddi şekilde azaltır. GPU yoksa
-  `backend/app/config.py`'de daha küçük bir Ollama modeli (ör. `qwen2.5:3b`) kullanılabilir.
+- [Ollama](https://ollama.com) (to run the LLM locally)
+- (Recommended) an NVIDIA GPU — significantly reduces TTS and LLM latency.
+  Without a GPU, a smaller Ollama model (e.g. `qwen2.5:3b`) can be set in
+  `backend/app/config.py`.
 
-## Kurulum
+## Setup
 
-### 1) Ollama ve model
+### 1) Ollama and the model
 
 ```bash
-# ollama.com/download üzerinden kur, sonra:
+# install from ollama.com/download, then:
 ollama pull llama3.1:8b
 ```
 
@@ -84,11 +86,12 @@ uv pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-İlk çalıştırmada:
-- `bdte.db` (SQLite) otomatik oluşturulur
-- Örnek bir persona ("Nezahat Yılmaz") otomatik eklenir (seed)
-- TTS modelini ilk kullanımda (`/api/tts/` ilk çağrıldığında) Coqui otomatik indirir (~2GB,
-  Coqui Public Model License / CPML onayı ister — bkz. https://coqui.ai/cpml.txt)
+On first run:
+- `bdte.db` (SQLite) is created automatically
+- An example persona ("Margaret Whitfield") is inserted automatically (seeded)
+- The TTS model is downloaded automatically the first time `/api/tts/` is
+  called (~2GB, requires accepting the Coqui Public Model License / CPML —
+  see https://coqui.ai/cpml.txt)
 
 ### 3) Frontend
 
@@ -98,51 +101,52 @@ npm install
 npm run dev
 ```
 
-Servisler ayağa kalktığında:
+Once running:
 
-| Servis | Adres |
+| Service | Address |
 |---|---|
-| Frontend (sohbet arayüzü) | http://localhost:5173 |
+| Frontend (chat UI) | http://localhost:5173 |
 | Backend API (Swagger docs) | http://localhost:8000/docs |
 | Ollama | http://localhost:11434 |
 
-## API özeti
+## API summary
 
-| Endpoint | Açıklama |
+| Endpoint | Description |
 |---|---|
-| `GET /api/profile/` | Tüm persona'ları listeler |
-| `GET /api/profile/{id}` | Bir persona'nın tüm detayını (boyutlar, ağırlıklar, ham karşılaştırmalar) döner |
-| `POST /api/profile/` | Yeni persona oluşturur (5 boyut + 10 ikili karşılaştırma → AHP ağırlıkları hesaplanır) |
-| `PUT /api/profile/{id}` | Var olan bir persona'yı düzenler, ağırlıkları yeniden hesaplar |
-| `DELETE /api/profile/{id}` | Persona'yı ve ona ait sohbet geçmişini siler (son persona silinemez) |
-| `POST /api/chat/` | Seçili persona ile sohbet eder, geçmişi SQLite'a kalıcı yazar |
-| `POST /api/tts/` | Metni sese çevirir (persona'nın cinsiyetine göre ses seçilir) |
+| `GET /api/profile/` | Lists all personas |
+| `GET /api/profile/{id}` | Returns full details of a persona (dimensions, weights, raw comparisons) |
+| `POST /api/profile/` | Creates a new persona (5 dimensions + 10 pairwise comparisons → AHP weights computed) |
+| `PUT /api/profile/{id}` | Edits an existing persona, recomputes weights |
+| `DELETE /api/profile/{id}` | Deletes a persona and its conversation history (last persona can't be deleted) |
+| `POST /api/chat/` | Chats with the selected persona, persists history in SQLite |
+| `POST /api/tts/` | Converts text to speech (voice chosen based on the persona's gender) |
 
-Tam ve interaktif dokümantasyon için backend çalışırken `http://localhost:8000/docs`
-adresine bakılabilir (FastAPI/Swagger otomatik üretir).
+Full interactive documentation is available at `http://localhost:8000/docs`
+while the backend is running (auto-generated by FastAPI/Swagger).
 
-## MCDM raporunu bağımsız çalıştırma
+## Running the MCDM report standalone
 
 ```bash
 cd ml-pipeline
 python mcdm.py
 ```
 
-AHP ağırlıklarını, tutarlılık oranını (CR) ve TOPSIS sıralamasını terminalde gösterir
-(backend'i ayağa kaldırmadan, sadece yöntemi doğrulamak için).
+Prints the AHP weights, consistency ratio (CR), and TOPSIS ranking in the
+terminal (without starting the backend — just to validate the methodology).
 
-## Bilinen sınırlamalar / gelecek çalışma
+## Known limitations / future work
 
-- **Sentetik veri:** Gerçek katılımcı görüşmesi/anketi yerine, kullanıcı tarafından
-  tanımlanan örnek personalar kullanılıyor (zaman kısıtı). AHP/TOPSIS metodolojisi
-  gerçek veriyle aynı şekilde çalışır.
-- **SQLite (PostgreSQL+pgvector değil):** Şu an gerçek embedding tabanlı RAG (uzun
-  vadeli hafıza) yok; persona, prompt engineering ile "system prompt" olarak
-  enjekte ediliyor. İleride pgvector'a geçiş, `DATABASE_URL`'i değiştirmekten
-  ibaret olacak şekilde tasarlandı.
-- **TTS gecikmesi:** ~3 saniye (GPU ısınması sonrası), streaming olmayan üretim
-  nedeniyle. Orijinal hedeflenen <1000ms'nin üzerinde.
-- **Avatar:** Gerçek lip-sync değil, basit ağız açma/kapama animasyonu (ağır
-  GPU gerektiren SadTalker/Wav2Lip gibi modeller MVP kapsamı dışı bırakıldı).
-- **Guardrail:** Hassas konularda (sağlık, ölüm, yalnızlık) şu an yalnızca prompt
-  seviyesinde bir yönlendirme var; ayrı bir güvenlik katmanı yok.
+- **Synthetic data:** Instead of real participant interviews/surveys,
+  user-defined example personas are used (time constraint). The AHP/TOPSIS
+  methodology works the same way with real data.
+- **SQLite (not PostgreSQL+pgvector):** There is currently no real
+  embedding-based RAG (long-term memory); the persona is injected as a
+  "system prompt" via prompt engineering. A future migration to pgvector
+  is designed to be as simple as changing `DATABASE_URL`.
+- **TTS latency:** ~3 seconds (after GPU warm-up), due to non-streaming
+  generation. Above the originally targeted <1000ms.
+- **Avatar:** Not real lip-sync, just a simple mouth open/close animation
+  (heavy GPU-based models like SadTalker/Wav2Lip were left out of the MVP
+  scope).
+- **Guardrail:** Sensitive topics (health, death, loneliness) are currently
+  only guided at the prompt level; there is no separate safety layer yet.

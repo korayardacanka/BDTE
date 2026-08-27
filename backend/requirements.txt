@@ -12,5 +12,7 @@ pymcdm==1.2.1
 pandas==2.2.3
 numpy==1.26.4
 python-multipart==0.0.9
+
+# TTS (Coqui TTS / XTTS-v2 — idiap fork, maintained version)
 coqui-tts[codec]
 torchaudio
