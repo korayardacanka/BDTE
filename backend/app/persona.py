@@ -10,7 +10,9 @@ dimensions, (2) build_system_prompt(), which generates an LLM system
 prompt from any persona dictionary, and (3) a seed function that inserts
 an example/synthetic persona on first startup.
 """
-from app.mcdm import compute_ahp_weights
+import json
+
+from app.mcdm import BEHAVIORAL_COMPARISONS, compute_ahp_weights
 
 DIMENSION_KEYS = [
     "emotional_patterns",
@@ -149,6 +151,16 @@ def seed_default_persona(db) -> None:
     weights = {k: float(v) for k, v in ahp_result["weights"].items()}
     cr = float(ahp_result["consistency_ratio"])
 
+    # Convert BEHAVIORAL_COMPARISONS (from mcdm.py) into the same JSON
+    # format used by the create/edit form, so the sliders show the real
+    # values used to compute the seed persona's weights when editing.
+    comparisons_list = []
+    for (a, b), value in BEHAVIORAL_COMPARISONS.items():
+        if value >= 1:
+            comparisons_list.append({"a": a, "b": b, "value": value, "more_important": "a"})
+        else:
+            comparisons_list.append({"a": a, "b": b, "value": 1 / value, "more_important": "b"})
+
     profile = BehavioralProfile(
         subject_name="Margaret Whitfield",
         relation="grandmother",
@@ -165,6 +177,7 @@ def seed_default_persona(db) -> None:
         weight_decision_making_traits=weights["decision_making_traits"],
         weight_relationship_dynamics=weights["relationship_dynamics"],
         consistency_ratio=cr,
+        comparisons_json=json.dumps(comparisons_list),
     )
     db.add(profile)
     db.commit()

@@ -235,9 +235,27 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
           {COMPARISON_PAIRS.map(([a, b]) => {
             const pairKey = `${a}|${b}`;
             const current = comparisons[pairKey];
-            const currentIndex = SCALE_STEPS.findIndex(
+            let currentIndex = SCALE_STEPS.findIndex(
               (s) => s.value === current.value && s.more_important === current.more_important
             );
+            // Defensive fallback: if the stored value doesn't exactly match a
+            // slider step (e.g. data from an external source using the full
+            // 1-9 Saaty scale instead of just 1/3/5/7/9), snap to the closest
+            // step instead of crashing on an invalid array index.
+            if (currentIndex === -1) {
+              const signedValue = current.more_important === "a" ? current.value : -current.value;
+              let closest = 0;
+              let closestDiff = Infinity;
+              SCALE_STEPS.forEach((s, i) => {
+                const sSigned = s.more_important === "a" ? s.value : -s.value;
+                const diff = Math.abs(sSigned - signedValue);
+                if (diff < closestDiff) {
+                  closestDiff = diff;
+                  closest = i;
+                }
+              });
+              currentIndex = closest;
+            }
             return (
               <div key={pairKey} className="text-sm">
                 <div className="flex justify-between text-xs text-slate-600 mb-1">

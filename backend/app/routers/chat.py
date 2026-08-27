@@ -113,3 +113,13 @@ async def send_message(req: ChatRequest, db: Session = Depends(get_db)):
     _save_message(db, session_id, "assistant", reply)
 
     return ChatResponse(reply=reply, session_id=req.session_id, persona_id=profile.id)
+@router.delete("/history/{persona_id}")
+def clear_history(persona_id: int, db: Session = Depends(get_db)):
+    """Deletes all conversation history for a given persona (starts a fresh chat)."""
+    deleted = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.session_id.like(f"%::persona{persona_id}"))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted_messages": deleted}

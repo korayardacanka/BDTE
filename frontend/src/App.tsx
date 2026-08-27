@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Avatar from "./components/Avatar";
 import PersonaForm from "./components/PersonaForm";
+import WeightChart from "./components/WeightChart";
 
 type Message = { role: "user" | "assistant"; text: string };
 type PersonaSummary = {
@@ -26,6 +27,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [personaWeights, setPersonaWeights] = useState<Record<string, number> | null>(null);
 
   async function loadPersonas(selectId?: number) {
     try {
@@ -58,6 +60,40 @@ export default function App() {
       },
     ]);
   }, [selectedPersonaId]);
+
+  // Fetch the full profile (including AHP weights) for the weight chart.
+  useEffect(() => {
+    if (selectedPersonaId === null) {
+      setPersonaWeights(null);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/profile/${selectedPersonaId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setPersonaWeights(data.mcdm_weights ?? null);
+      } catch (e) {
+        setPersonaWeights(null);
+      }
+    })();
+  }, [selectedPersonaId]);
+
+  async function startNewChat() {
+    if (selectedPersonaId === null) return;
+    if (!confirm("Start a new chat? This will permanently clear the conversation history with this persona.")) {
+      return;
+    }
+    try {
+      await fetch(`${API_BASE}/api/chat/history/${selectedPersonaId}`, { method: "DELETE" });
+      const persona = personas.find((p) => p.id === selectedPersonaId);
+      setMessages([
+        { role: "assistant", text: persona ? `You started a new conversation with ${persona.subject_name}.` : "New chat started." },
+      ]);
+    } catch (e) {
+      alert("Could not reach the backend.");
+    }
+  }
 
   async function sendMessage() {
     if (!input.trim() || selectedPersonaId === null || loading) return;
@@ -199,6 +235,19 @@ export default function App() {
             gender={selectedPersona?.gender ?? "female"}
             age={selectedPersona?.age_at_reference ?? null}
           />
+        </div>
+
+        {/* AHP weight chart for the selected persona */}
+        {personaWeights && <WeightChart weights={personaWeights} />}
+
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={startNewChat}
+            disabled={!selectedPersonaId}
+            className="text-xs text-slate-500 hover:text-slate-700 underline disabled:opacity-50"
+          >
+            Start new chat
+          </button>
         </div>
 
         <div className="bg-white rounded-lg shadow p-4 h-96 overflow-y-auto flex flex-col gap-3 mb-4">

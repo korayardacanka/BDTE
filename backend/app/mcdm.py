@@ -50,17 +50,21 @@ from pymcdm.methods import TOPSIS
 # their grandmother mostly through her "emotional patterns" and
 # "communication style", while "decision-making traits" felt less
 # defining in everyday conversation.
+# NOTE: only the primary Saaty scale values (1, 3, 5, 7, 9) are used here —
+# the frontend's comparison slider only offers these 5 steps per side.
+# Intermediate values (2, 4, 6, 8) would not match any slider position and
+# would crash the edit form, so they are avoided in default/seed data.
 BEHAVIORAL_COMPARISONS = {
-    ("emotional_patterns", "communication_style"): 2,
-    ("emotional_patterns", "relationship_dynamics"): 2,
-    ("emotional_patterns", "life_preferences"): 4,
-    ("emotional_patterns", "decision_making_traits"): 5,
+    ("emotional_patterns", "communication_style"): 3,
+    ("emotional_patterns", "relationship_dynamics"): 3,
+    ("emotional_patterns", "life_preferences"): 5,
+    ("emotional_patterns", "decision_making_traits"): 7,
     ("communication_style", "relationship_dynamics"): 1,
     ("communication_style", "life_preferences"): 3,
-    ("communication_style", "decision_making_traits"): 4,
-    ("relationship_dynamics", "life_preferences"): 2,
+    ("communication_style", "decision_making_traits"): 5,
+    ("relationship_dynamics", "life_preferences"): 3,
     ("relationship_dynamics", "decision_making_traits"): 3,
-    ("life_preferences", "decision_making_traits"): 2,
+    ("life_preferences", "decision_making_traits"): 3,
 }
 
 
