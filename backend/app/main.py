@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database import init_db, SessionLocal
 from app.persona import seed_default_persona
-from app.routers import health, profile, chat, tts
+from app.routers import health, profile, chat, tts, stt
 
 settings = get_settings()
 
@@ -41,7 +41,7 @@ app.include_router(health.router, tags=["health"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(tts.router, prefix="/api/tts", tags=["tts"])
-
+app.include_router(stt.router, prefix="/api/stt", tags=["stt"])
 
 @app.get("/")
 def root():

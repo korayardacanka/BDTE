@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Avatar from "./components/Avatar";
 import PersonaForm from "./components/PersonaForm";
 import WeightChart from "./components/WeightChart";
@@ -28,6 +28,10 @@ export default function App() {
   const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [personaWeights, setPersonaWeights] = useState<Record<string, number> | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   async function loadPersonas(selectId?: number) {
     try {
@@ -92,6 +96,55 @@ export default function App() {
       ]);
     } catch (e) {
       alert("Could not reach the backend.");
+    }
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        await sendAudioForTranscription(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error("Microphone access denied or unavailable:", e);
+      alert("Could not access the microphone. Check your browser's microphone permission.");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  }
+
+  async function sendAudioForTranscription(audioBlob: Blob) {
+    setTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "recording.webm");
+      const res = await fetch(`${API_BASE}/api/stt/`, { method: "POST", body: formData });
+      if (!res.ok) throw new Error("STT request failed");
+      const data = await res.json();
+      if (data.text) {
+        setInput((prev) => (prev ? `${prev} ${data.text}` : data.text));
+      }
+    } catch (e) {
+      console.error("Transcription failed:", e);
+      alert("Could not transcribe audio. Check whether the STT model is loaded on the backend.");
+    } finally {
+      setTranscribing(false);
     }
   }
 
@@ -289,6 +342,18 @@ export default function App() {
             placeholder={selectedPersona ? `Write a message to ${selectedPersona.subject_name}…` : "Write a message…"}
             disabled={!selectedPersonaId}
           />
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={!selectedPersonaId || transcribing}
+            title={isRecording ? "Stop recording" : "Record a voice message"}
+            className={`shrink-0 px-3 py-2 rounded-lg text-sm disabled:opacity-50 ${
+              isRecording
+                ? "bg-red-500 text-white animate-pulse hover:bg-red-600"
+                : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+            }`}
+          >
+            {transcribing ? "…" : isRecording ? "⏹" : "🎤"}
+          </button>
           <button
             onClick={sendMessage}
             disabled={!selectedPersonaId || loading}

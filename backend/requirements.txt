@@ -16,3 +16,5 @@ python-multipart==0.0.9
 # TTS (Coqui TTS / XTTS-v2 — idiap fork, maintained version)
 coqui-tts[codec]
 torchaudio
+# STT (faster-whisper — open-source, self-hosted speech-to-text)
+faster-whisper
