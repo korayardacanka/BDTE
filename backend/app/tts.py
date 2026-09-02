@@ -34,9 +34,16 @@ DEFAULT_SPEAKER = GENDER_SPEAKER_MAP["female"]
 
 def _get_tts():
     """
-    Loads the TTS model only once (on first call) and keeps it in memory
-    (lazy singleton). Model loading is heavy, so we don't want to reload
-    it on every request.
+    Loads the TTS model only once and keeps it in memory (singleton
+    pattern — the underlying model.bin is never reloaded from disk twice).
+
+    NOTE: although this function is written to load lazily (only on first
+    call), main.py deliberately calls it once, eagerly, at backend
+    startup — before the STT model can ever be loaded. This is required
+    to avoid a CUDA/cuDNN library conflict with faster-whisper (STT);
+    see the comment in main.py for details. So in practice, by the time
+    the server is ready to accept requests, this function has already
+    run once and simply returns the cached instance from then on.
     """
     global _tts_instance
     if _tts_instance is None:

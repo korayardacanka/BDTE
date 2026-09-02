@@ -27,7 +27,28 @@ try:
     seed_default_persona(_seed_db)
 finally:
     _seed_db.close()
+# Pre-load (warm up) the TTS model at startup, BEFORE the STT (faster-whisper)
+# model can ever be loaded by a user request.
+#
+# Why: PyTorch (used by Coqui TTS) and ctranslate2 (used by faster-whisper for
+# STT) can each bundle a different, incompatible CUDA/cuDNN runtime version.
+# On Windows, whichever library's cuDNN gets loaded into the process FIRST
+# "wins" and stays resident; if STT loads first, TTS later fails with an
+# error like "Could not load symbol cudnnGetLibConfig". Warming up TTS here,
+# before any request (including STT) can be handled, guarantees a safe load
+# order regardless of which feature the user tries first in the UI.
+#
+# Wrapped in try/except so a TTS load failure doesn't prevent the whole
+# backend from starting — TTS will just lazy-load again on first real
+# request as a fallback (with the same race-condition risk as before).
+try:
+    from app.tts import _get_tts
 
+    _get_tts()
+    print("[startup] TTS model pre-loaded successfully.")
+except Exception as exc:
+    print(f"[startup] WARNING: could not pre-load TTS model ({exc}). "
+          f"It will load lazily on first request instead.")
 # Allow the frontend (localhost:5173) to reach the API during development.
 app.add_middleware(
     CORSMiddleware,
