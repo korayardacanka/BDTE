@@ -12,7 +12,7 @@ an example/synthetic persona on first startup.
 """
 import json
 
-from app.mcdm import BEHAVIORAL_COMPARISONS, compute_ahp_weights
+from app.mcdm import BEHAVIORAL_COMPARISONS, compute_ahp_weights, compute_topsis_ranking
 
 DIMENSION_KEYS = [
     "emotional_patterns",
@@ -151,6 +151,13 @@ def seed_default_persona(db) -> None:
     weights = {k: float(v) for k, v in ahp_result["weights"].items()}
     cr = float(ahp_result["consistency_ratio"])
 
+    # TOPSIS: find which predefined behavioral archetype this persona's
+    # AHP weights are closest to (same validation step used for
+    # user-created personas — see routers/profile.py).
+    topsis_ranking = compute_topsis_ranking(weights=weights)
+    closest_archetype = topsis_ranking[0][0]
+    closest_archetype_score = float(topsis_ranking[0][1])
+
     # Convert BEHAVIORAL_COMPARISONS (from mcdm.py) into the same JSON
     # format used by the create/edit form, so the sliders show the real
     # values used to compute the seed persona's weights when editing.
@@ -178,6 +185,8 @@ def seed_default_persona(db) -> None:
         weight_relationship_dynamics=weights["relationship_dynamics"],
         consistency_ratio=cr,
         comparisons_json=json.dumps(comparisons_list),
+        closest_archetype=closest_archetype,
+        closest_archetype_score=closest_archetype_score,
     )
     db.add(profile)
     db.commit()
@@ -193,4 +202,6 @@ def profile_row_to_dict(profile) -> dict:
         "age_at_reference": profile.age_at_reference,
         "dimensions": {k: getattr(profile, k) for k in DIMENSION_KEYS},
         "mcdm_weights": {k: getattr(profile, f"weight_{k}") or 0 for k in DIMENSION_KEYS},
+        "closest_archetype": profile.closest_archetype,
+        "closest_archetype_score": profile.closest_archetype_score,
     }

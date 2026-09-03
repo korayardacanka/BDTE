@@ -28,6 +28,7 @@ export default function App() {
   const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [personaWeights, setPersonaWeights] = useState<Record<string, number> | null>(null);
+  const [closestArchetype, setClosestArchetype] = useState<{ name: string; score: number } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -77,6 +78,11 @@ export default function App() {
         if (!res.ok) return;
         const data = await res.json();
         setPersonaWeights(data.mcdm_weights ?? null);
+        setClosestArchetype(
+          data.closest_archetype
+            ? { name: data.closest_archetype, score: data.closest_archetype_score }
+            : null
+        );
       } catch (e) {
         setPersonaWeights(null);
       }
@@ -292,6 +298,19 @@ export default function App() {
 
         {/* AHP weight chart for the selected persona */}
         {personaWeights && <WeightChart weights={personaWeights} />}
+
+        {/* TOPSIS validation: closest predefined behavioral archetype */}
+        {closestArchetype && (
+          <div className="bg-white rounded-lg shadow px-4 py-3 mb-4 text-sm">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              TOPSIS match:{" "}
+            </span>
+            <span className="text-slate-700">
+              closest to <span className="font-medium">"{closestArchetype.name}"</span> archetype
+              {" "}({(closestArchetype.score * 100).toFixed(0)}% match)
+            </span>
+          </div>
+        )}
 
         <div className="flex justify-end mb-2">
           <button

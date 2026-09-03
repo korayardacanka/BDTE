@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.mcdm import compute_ahp_weights
+from app.mcdm import compute_ahp_weights, compute_topsis_ranking
 from app.models import BehavioralProfile, ConversationMessage
 from app.persona import COMPARISON_PAIRS, DIMENSION_KEYS, DIMENSION_LABELS, profile_row_to_dict
 
@@ -129,6 +129,14 @@ def _apply_to_profile(profile: BehavioralProfile, req: ProfileRequest, weights: 
     profile.consistency_ratio = cr
     profile.comparisons_json = json.dumps([c.model_dump() for c in req.comparisons])
 
+    # TOPSIS: rank this persona's weights against predefined behavioral
+    # archetypes to find the closest match — a validation/insight step
+    # described in the project proposal (AHP derives weights, TOPSIS
+    # validates them against alternative configurations).
+    topsis_ranking = compute_topsis_ranking(weights=weights)
+    profile.closest_archetype = topsis_ranking[0][0]
+    profile.closest_archetype_score = float(topsis_ranking[0][1])
+
 
 @router.post("/")
 def create_profile(req: ProfileRequest, db: Session = Depends(get_db)):
@@ -146,6 +154,8 @@ def create_profile(req: ProfileRequest, db: Session = Depends(get_db)):
         "weights": weights,
         "consistency_ratio": cr,
         "consistency_ok": bool(cr < 0.10),
+        "closest_archetype": profile.closest_archetype,
+        "closest_archetype_score": profile.closest_archetype_score,
     }
 
 
@@ -167,6 +177,8 @@ def update_profile(profile_id: int, req: ProfileRequest, db: Session = Depends(g
         "weights": weights,
         "consistency_ratio": cr,
         "consistency_ok": bool(cr < 0.10),
+        "closest_archetype": profile.closest_archetype,
+        "closest_archetype_score": profile.closest_archetype_score,
     }
 
 

@@ -58,4 +58,13 @@ class BehavioralProfile(Base):
     # be restored exactly when editing a persona later.
     comparisons_json = Column(Text, nullable=True)
 
+    # TOPSIS result: which predefined behavioral archetype this persona's
+    # AHP weights are closest to, and how close (0-1, higher = closer to
+    # the ideal match). Computed automatically from the AHP weights above
+    # — see app/mcdm.py compute_topsis_ranking(). This is the "validation
+    # mechanism for the weight derivation process" described in the
+    # project proposal.
+    closest_archetype = Column(String(64), nullable=True)
+    closest_archetype_score = Column(Float, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

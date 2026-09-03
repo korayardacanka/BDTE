@@ -88,21 +88,33 @@ def compute_ahp_weights(comparisons: dict = BEHAVIORAL_COMPARISONS) -> dict:
 # dimensions (e.g., how strongly "emotional patterns" is expressed in that
 # alternative). In a real application these scores would also come from
 # stakeholder evaluation; here they are example/synthetic values.
+#
+# IMPORTANT DESIGN CONSTRAINT: each of the 5 dimensions must have a clear,
+# distinct "owner" archetype (the alternative with the highest score for
+# that dimension) that is NOT shared with another dimension's owner. If
+# one alternative scores highest across multiple dimensions at once (as an
+# earlier version of this data did — "Warm and Emotional" was highest in
+# 3 of 5 dimensions), TOPSIS will pick that same alternative as the winner
+# regardless of which dimension the AHP weights actually emphasize,
+# making the ranking effectively ignore the weights. Verify with varied
+# weight vectors after changing these numbers (see mcdm.py's __main__ or
+# a quick script) to confirm the ranking actually changes based on which
+# dimension is weighted highest.
 ALTERNATIVE_CONFIGS = {
     "Warm and Emotional": {
-        "emotional_patterns": 9, "communication_style": 8,
-        "life_preferences": 6, "decision_making_traits": 4,
-        "relationship_dynamics": 9,
+        "emotional_patterns": 9, "relationship_dynamics": 9,
+        "communication_style": 5, "life_preferences": 3,
+        "decision_making_traits": 2,
     },
     "Balanced": {
-        "emotional_patterns": 7, "communication_style": 7,
-        "life_preferences": 7, "decision_making_traits": 6,
-        "relationship_dynamics": 7,
+        "emotional_patterns": 5, "relationship_dynamics": 5,
+        "communication_style": 9, "life_preferences": 5,
+        "decision_making_traits": 5,
     },
     "Practical and Informative": {
-        "emotional_patterns": 4, "communication_style": 6,
-        "life_preferences": 8, "decision_making_traits": 9,
-        "relationship_dynamics": 5,
+        "emotional_patterns": 2, "relationship_dynamics": 3,
+        "communication_style": 5, "life_preferences": 9,
+        "decision_making_traits": 9,
     },
 }
 
