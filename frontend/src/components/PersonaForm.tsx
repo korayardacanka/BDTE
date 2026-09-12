@@ -186,13 +186,26 @@ export default function PersonaForm({ personaId, onSaved, onClose }: PersonaForm
             value={subjectName}
             onChange={(e) => setSubjectName(e.target.value)}
           />
-          <input
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
-            placeholder="Age"
-            type="number"
-            value={age}
-            onChange={(e) => setAge(e.target.value)}
-          />
+ <input
+  className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+  placeholder="Age"
+  type="number"
+  min="1"
+  max="120"
+  step="1"
+  value={age}
+  onKeyDown={(e) => {
+    if (["-", "+", "e", "E"].includes(e.key)) {
+      e.preventDefault();
+    }
+  }}
+  onChange={(e) => {
+    const val = e.target.value;
+    if (val === "" || Number(val) >= 1) {
+      setAge(val);
+    }
+  }}
+/>
           <input
             className="col-span-2 border border-slate-300 rounded-lg px-3 py-2 text-sm"
             placeholder="Relation (e.g. grandmother, grandfather, father)"

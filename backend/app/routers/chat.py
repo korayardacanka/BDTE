@@ -19,7 +19,7 @@ from app.persona import build_system_prompt, profile_row_to_dict
 router = APIRouter()
 settings = get_settings()
 
-MAX_HISTORY_MESSAGES = 20
+MAX_HISTORY_MESSAGES = 50
 
 
 class ChatRequest(BaseModel):

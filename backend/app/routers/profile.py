@@ -74,7 +74,7 @@ class ProfileRequest(BaseModel):
     subject_name: str
     relation: str
     gender: str  # "female" or "male"
-    age_at_reference: int | None = None
+    age_at_reference: int | None = Field(default=None, ge=1, le=120)
     dimensions: dict[str, str]  # 5 dimensions -> free text
     comparisons: list[ComparisonEntry]  # exactly 10 comparisons expected
 
